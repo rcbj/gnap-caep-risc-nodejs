@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // SPDX-FileCopyrightText: 2026 Iya CyberSecurity Solutions, LLC
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: MIT
 /**
  * The package version, in the usual npm form.
  *

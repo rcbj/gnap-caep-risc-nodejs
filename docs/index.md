@@ -15,7 +15,7 @@ A **server-side GNAP client** ([RFC 9635](https://www.rfc-editor.org/rfc/rfc9635
 
 It is TypeScript and works from JavaScript, needs no web framework, and has no runtime dependency. It is built and tested against [iya-sts](https://rcbj.github.io/iya-sts/). How a GNAP application is registered there is [GNAP](https://rcbj.github.io/iya-sts/gnap.html) and [Configure a GNAP application](https://rcbj.github.io/iya-sts/configure-gnap.html).
 
-The license is the Business Source License 1.1. Production use requires a commercial license from Iya CyberSecurity Solutions, LLC.
+MIT licensed. © 2026 Iya CyberSecurity Solutions, LLC.
 
 ## Install
 
