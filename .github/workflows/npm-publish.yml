@@ -130,16 +130,17 @@ jobs:
           tar -tzf "${TARBALL}" | grep -q '^package/dist/index.js$' || { echo "dist/index.js is not in the package" >&2; exit 1; }
           tar -tzf "${TARBALL}" | grep -q '^package/dist/index.d.ts$' || { echo "dist/index.d.ts is not in the package" >&2; exit 1; }
           if tar -tzf "${TARBALL}" | grep '\.ts$' | grep -v '\.d\.ts$' | grep -q .; then echo "a .ts source is in the package" >&2; exit 1; fi
-          # The library must import from what was packed, from ESM and from CommonJS, and type-check.
+          # The packed library is ESM ("type": "module"). Import it, run the CLI, and type-check a caller.
           mkdir -p /tmp/smoke && cd /tmp/smoke && npm init -y >/dev/null && npm pkg set type=module
           npm install --no-audit --no-fund "${GITHUB_WORKSPACE}/packages/gnap-caep-risc-nodejs/${TARBALL}"
-          node --input-type=module -e "import * as m from 'gnap-caep-risc-nodejs'; for (const n of ['ServiceProvider','SamlError','MemoryReplayCache','postFormHtml']) if (!m[n]) throw new Error(n + ' is not exported'); console.log('esm ok');"
-          node -e "const m = require('gnap-caep-risc-nodejs'); if (!m.ServiceProvider) throw new Error('require() failed'); console.log('cjs ok');"
-          npx --no-install gnap-caep-risc-nodejs help > cli.txt
-          grep -q generate-keys cli.txt || { echo "the gnap-caep-risc-nodejs command printed no usage:" >&2; cat cli.txt >&2; exit 1; }
+          node --input-type=module -e "import { GnapClient, GnapError, SignalsReceiver, interactionHash } from 'gnap-caep-risc-nodejs'; if (typeof GnapClient !== 'function' || typeof GnapError !== 'function' || typeof SignalsReceiver !== 'function') throw new Error('export'); if (interactionHash('abc', 'def', 'xyz', 'https://as.example/gnap') !== '2o3b9NeEcvp0At5d-71yCgybP45eTGm1_pTNMmjv_V0') throw new Error('hash'); console.log('esm ok');"
+          npx --no-install gnap-caep-risc-nodejs > cli.txt
+          grep -q generate-key cli.txt || { echo "the gnap-caep-risc-nodejs command printed no usage:" >&2; cat cli.txt >&2; exit 1; }
           echo "cli ok"
-          printf '%s\n' "import { ServiceProvider, type SamlLogin } from 'gnap-caep-risc-nodejs';" \
-            "export async function f(sp: ServiceProvider): Promise<SamlLogin> { return sp.acs({ method: 'GET', url: '/' }); }" > check.ts
+          printf '%s\n' "import { GnapClient, GnapError, type Grant } from 'gnap-caep-risc-nodejs';" \
+            "export function token(grant: Grant): string { return grant.accessToken; }" \
+            "export function code(err: GnapError): string { return err.code; }" \
+            "export function instance(gnap: GnapClient): string | undefined { return gnap.instanceId; }" > check.ts
           printf '%s' '{"compilerOptions":{"noEmit":true,"strict":true,"module":"NodeNext","moduleResolution":"NodeNext","target":"ES2022","skipLibCheck":false,"types":["node"]},"files":["check.ts"]}' > tsconfig.json
           npm install --no-audit --no-fund @types/node@24 >/dev/null
           "${GITHUB_WORKSPACE}/node_modules/.bin/tsc" -p tsconfig.json && echo "types ok"

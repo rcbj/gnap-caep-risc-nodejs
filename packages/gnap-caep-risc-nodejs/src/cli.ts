@@ -2,7 +2,7 @@
 // Writes the demo's (or any configuration's) P-256 private key and self-signed certificate.
 //   gnap-caep-risc-nodejs generate-key --config demo/gnap.json [--cn name] [--days 1095] [--force]
 
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createSelfSignedKeyPair } from './x509.ts';
@@ -72,7 +72,17 @@ export function main(argv: readonly string[] = process.argv.slice(2)): void {
   console.log(`sha256 ${pair.certificate.fingerprint256}`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+// npm's bin is a symlink. import.meta.url is the real file, so compare real paths or the
+// command exits without doing anything when it is installed.
+let invoked = '';
+if (process.argv[1]) {
+  try {
+    invoked = pathToFileURL(realpathSync(process.argv[1])).href;
+  } catch {
+    invoked = '';
+  }
+}
+if (import.meta.url === invoked) {
   try {
     main();
   } catch (err) {
