@@ -37,6 +37,7 @@ import {
   EVENT, GnapClient, GnapError, SignalsReceiver, trackedFromPerson,
   type Grant, type Person, type SignalEvent,
 } from 'gnap-caep-risc-nodejs';
+import { onPort } from '../scripts/redirects.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
@@ -55,14 +56,23 @@ const SSF = (() => {
   }
 })();
 
-// Loaded on first use. fromFile reads the key and does not discover, so the home page can render
-// before the authorization server is reachable.
+// Loaded on first use. The key is read and nothing is discovered, so the home page can render
+// before the authorization server is reachable. A loopback finish URI follows the port this process
+// listens on, which is the URI configure-iya-sts registers. Any other host is left as written.
 let gnapClient: GnapClient | undefined;
 let gnapError: string | undefined;
+
+function readConfig(): { finishUri?: unknown; display?: { uri?: unknown } } {
+  const raw = JSON.parse(readFileSync(CONFIG, 'utf8')) as { finishUri?: unknown; display?: { uri?: unknown } };
+  if (typeof raw.finishUri === 'string' && raw.finishUri) raw.finishUri = onPort(raw.finishUri, PORT);
+  if (raw.display && typeof raw.display.uri === 'string' && raw.display.uri) raw.display.uri = onPort(raw.display.uri, PORT);
+  return raw;
+}
+
 function client(): GnapClient {
   if (!gnapClient) {
     try {
-      gnapClient = GnapClient.fromFile(CONFIG);
+      gnapClient = GnapClient.create(GnapClient.resolve(readConfig(), dirname(CONFIG)));
       gnapError = undefined;
     } catch (err) {
       gnapError = err instanceof GnapError ? `${err.code}: ${err.message}` : (err as Error).message;
@@ -699,8 +709,8 @@ const server = http.createServer((req, res) => {
 });
 
 try {
-  const config = JSON.parse(readFileSync(CONFIG, 'utf8')) as { finishUri?: string };
-  secureCookies = new URL(config.finishUri ?? 'http://localhost/callback').protocol === 'https:';
+  const finishUri = readConfig().finishUri;
+  secureCookies = new URL(typeof finishUri === 'string' && finishUri ? finishUri : 'http://localhost/callback').protocol === 'https:';
 } catch (err) {
   console.warn(`cannot read ${CONFIG}: ${(err as Error).message}`);
 }

@@ -24,11 +24,13 @@
  * ADMIN_API_CLIENT_SECRET or STS_ADMIN_API_CLIENT_SECRET.
  */
 
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { GnapClient, publicKeyObject } from '../packages/gnap-caep-risc-nodejs/src/index.ts';
 import { send } from '../packages/gnap-caep-risc-nodejs/src/http.ts';
+import { demoPort, redirectsFor } from './redirects.mjs';
 import { saveTrustChain, trustPath } from './trust-chain.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -53,8 +55,10 @@ export function usage(): string {
   --config        The demo's GNAP configuration (default: demo/gnap.json)
   --idp           iya-sts's base URL; the realm's, e.g. https://host/realm/acme, for a trust realm
                   (default: the grant endpoint's origin, with a trailing /gnap removed, or $IYA_STS_URL)
-  --public-url    Used only when the file has no finish URI: <public-url>/callback
-                  (default: $PUBLIC_URL or http://localhost:3000). The file's finish URI wins.
+  --public-url    Replace the origin of the file's finish URI and display URI with this URL, and
+                  keep their paths (default: unset; $PUBLIC_URL). Without it, a loopback finish
+                  URI follows the running demo's PORT, then $PORT. A non-loopback finish URI is
+                  left as written.
   --test-user     The test user to create (default: gnap-demo-user). Its password is
                   $GNAP_DEMO_USER_PASSWORD, or one is generated and printed once. With that variable
                   set, an existing user's password is replaced.
@@ -69,6 +73,8 @@ export interface Args {
   config: string;
   idp: string;
   publicUrl: string;
+  /** Set when --public-url or PUBLIC_URL was given. The default does not count. */
+  publicUrlGiven: boolean;
   testUser: string;
   dryRun: boolean;
   help: boolean;
@@ -81,6 +87,7 @@ export function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv = proc
     config: resolve(repoRoot, 'demo/gnap.json'),
     idp: (env.IYA_STS_URL || '').replace(/\/+$/, ''),
     publicUrl: (env.PUBLIC_URL || 'http://localhost:3000').replace(/\/+$/, ''),
+    publicUrlGiven: Boolean(env.PUBLIC_URL),
     testUser: 'gnap-demo-user',
     dryRun: false,
     help: false,
@@ -98,8 +105,10 @@ export function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv = proc
     else if (arg === '--idp') {
       out.idp = value().replace(/\/+$/, '');
       out.idpGiven = true;
-    } else if (arg === '--public-url') out.publicUrl = value().replace(/\/+$/, '');
-    else if (arg === '--test-user') out.testUser = value().trim();
+    } else if (arg === '--public-url') {
+      out.publicUrl = value().replace(/\/+$/, '');
+      out.publicUrlGiven = true;
+    } else if (arg === '--test-user') out.testUser = value().trim();
     else if (arg === '--no-test-user') out.testUser = '';
     else if (arg === '--dry-run') out.dryRun = true;
     else throw new Error(`Unknown argument ${arg}\n${usage()}`);
@@ -125,7 +134,7 @@ export interface DemoFiles {
   transmitter?: string;
 }
 
-/** The client the configuration names. The finish URI in the file wins over publicUrl. */
+/** The client the configuration names. Registration then applies {@link redirectsFor}. */
 export function filesOf(configPath: string, publicUrl: string): DemoFiles {
   const raw = JSON.parse(readFileSync(configPath, 'utf8')) as {
     application?: string;
@@ -318,6 +327,22 @@ function keyJsonOf(configPath: string): string {
   return JSON.stringify(publicKeyObject(GnapClient.fromFile(configPath).key));
 }
 
+/** PORT from the running gnap-demo container, when compose has one. Docker being absent is not an error. */
+export function containerPort(cwd = repoRoot): string | undefined {
+  try {
+    const id = execFileSync('docker', ['compose', 'ps', '-q', 'gnap-demo'], {
+      cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim().split('\n')[0];
+    if (!id) return undefined;
+    const env = execFileSync('docker', ['inspect', '-f', '{{range .Config.Env}}{{println .}}{{end}}', id], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return env.split('\n').find((line) => line.startsWith('PORT='))?.slice('PORT='.length);
+  } catch {
+    return undefined;
+  }
+}
+
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
   const args = parseArgs(argv);
   if (args.help) {
@@ -325,6 +350,12 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     return;
   }
   const files = filesOf(args.config, args.publicUrl);
+  const port = demoPort(process.env.PORT, containerPort());
+  const uris = redirectsFor(files.finishUri, files.displayUri, {
+    publicUrl: args.publicUrl, publicUrlGiven: args.publicUrlGiven, port,
+  });
+  files.finishUri = uris.finishUri;
+  if (uris.displayUri) files.displayUri = uris.displayUri;
   const idp = args.idp || idpFromGrant(files.grantEndpoint);
   const { origin, base } = realmOf(idp);
 
