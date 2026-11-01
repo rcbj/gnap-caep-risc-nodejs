@@ -24,7 +24,7 @@ COPY packages/gnap-caep-risc-nodejs/package.json packages/gnap-caep-risc-nodejs/
 COPY demo/package.json demo/
 RUN npm ci --omit=dev --workspaces --include-workspace-root --ignore-scripts && npm cache clean --force
 COPY --from=build /src/packages/gnap-caep-risc-nodejs/dist packages/gnap-caep-risc-nodejs/dist
-COPY demo/server.ts demo/gnap.json demo/
+COPY demo/server.ts demo/uid-claim.ts demo/gnap.json demo/
 COPY demo/public demo/public
 COPY scripts/trust-chain.mjs scripts/redirects.mjs scripts/
 COPY demo/entrypoint.sh /entrypoint.sh
