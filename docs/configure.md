@@ -29,10 +29,10 @@ The application id is the file's `application` (`gnap-caep-risc-demo`). The kind
 | Field | Value |
 |---|---|
 | `gnapKey` | the public key, one JSON string. Mutual TLS is `{"proof":"mtls","cert":"<PEM>"}`. Sent only when the application is created |
-| `gnapFinishUri` | the file's `finishUri` (`http://localhost:3000/callback`) |
+| `gnapFinishUri` | the file's `finishUri`. A loopback finish URI follows PORT, and configure-iya-sts registers that URI |
 | `gnapInteractionStartModes` | `redirect` |
 | `gnapBearerTokens` | `FALSE`, so iya-sts refuses a `bearer` flag for this client |
-| `gnapDisplayUri` | the file's `display.uri` |
+| `gnapDisplayUri` | the file's `display.uri`, moved the same way when it is loopback |
 | `oauthAllowedScope` | the string rights in `access`, `ssf.read` and `ssf.manage` |
 
 No `class_id` is registered, and no browser origin. This client is a server. A re-run that finds the application already in the registry adds the finish URI, the start mode and the scopes, and sets the bearer flag and the display URI. A single-valued field goes through `applications/set`; `applications/add` refuses it. The re-run does not send `gnapKey` again. A new key means a new registration, or setting `gnapKey` yourself.

@@ -12,6 +12,7 @@ import { describe, it } from 'node:test';
 import {
   MULTIPLE_ACCOUNTS, SSF_ROLES, adminTls, filesOf, idpFromGrant, parseArgs, planFor, realmOf, userAttributes,
 } from './configure-iya-sts.ts';
+import { demoPort, onPort, redirectsFor } from './redirects.mjs';
 import { fetchTrustChain, saveTrustChain, trustPath } from './trust-chain.mjs';
 
 describe('configure-iya-sts', () => {
@@ -109,11 +110,45 @@ describe('configure-iya-sts', () => {
     const args = parseArgs(['--idp', 'https://idp.test/', '--public-url', 'http://app.test/', '--no-test-user', '--dry-run'], {});
     assert.equal(args.idp, 'https://idp.test');
     assert.equal(args.publicUrl, 'http://app.test');
+    assert.equal(args.publicUrlGiven, true);
+    assert.equal(parseArgs([], {}).publicUrlGiven, false);
+    assert.equal(parseArgs([], { PUBLIC_URL: 'http://demo.test' }).publicUrlGiven, true);
     assert.equal(args.testUser, '');
     assert.equal(args.dryRun, true);
     assert.equal(args.config.endsWith('/demo/gnap.json'), true);
     assert.throws(() => parseArgs(['--idp', 'http://idp.test'], {}), /https/);
     assert.throws(() => parseArgs(['--bogus'], {}), /Unknown argument/);
+  });
+
+  it('registers a loopback finish URI on the port the demo listens on', () => {
+    const moved = redirectsFor('http://localhost:3000/callback', 'http://localhost:3000/', { publicUrlGiven: false, port: 3001 });
+    assert.equal(moved.finishUri, 'http://localhost:3001/callback');
+    assert.equal(moved.displayUri, 'http://localhost:3001/');
+    assert.equal(onPort('http://127.0.0.1:3000/callback', 3001), 'http://127.0.0.1:3001/callback');
+    assert.equal(onPort('http://[::1]:3000/callback', 3001), 'http://[::1]:3001/callback');
+    assert.equal(onPort('not a url', 3001), 'not a url');
+    const published = redirectsFor('https://app.example/callback', 'https://app.example/', { publicUrlGiven: false, port: 3001 });
+    assert.equal(published.finishUri, 'https://app.example/callback');
+    const explicit = redirectsFor('http://localhost:3000/callback', 'http://localhost:3000/', {
+      publicUrl: 'http://app.test:9', publicUrlGiven: true, port: 3001,
+    });
+    assert.equal(explicit.finishUri, 'http://app.test:9/callback');
+    assert.equal(explicit.displayUri, 'http://app.test:9/');
+    assert.equal(demoPort('3000', '3001'), 3001);
+    assert.equal(demoPort('3001', ''), 3001);
+    assert.equal(demoPort('', undefined), undefined);
+    assert.equal(demoPort('nope', undefined), undefined);
+    const files = filesOf(config, 'http://localhost:3000');
+    const redirects = redirectsFor(files.finishUri, files.displayUri, { publicUrlGiven: false, port: 3001 });
+    files.finishUri = redirects.finishUri;
+    files.displayUri = redirects.displayUri;
+    const plan = planFor(files, 'https://localhost:8081', '', JSON.stringify({ proof: 'mtls' }));
+    const body = plan.find((call) => call.when === 'create')?.body as { fields: { gnapFinishUri: string[]; gnapDisplayUri: string } };
+    assert.deepEqual(body.fields.gnapFinishUri, ['http://localhost:3001/callback']);
+    assert.equal(body.fields.gnapDisplayUri, 'http://localhost:3001/');
+    const again = plan.filter((call) => call.when === 'exists').map((call) => JSON.stringify(call.body));
+    assert.ok(again.some((line) => line.includes('"gnapFinishUri"') && line.includes('http://localhost:3001/callback')));
+    assert.ok(again.some((line) => line.includes('"gnapDisplayUri"') && line.includes('"http://localhost:3001/"')));
   });
 
   it('saves the published listener CA trust chain, and the handshake when that document is absent', async () => {

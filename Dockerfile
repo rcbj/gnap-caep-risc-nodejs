@@ -26,12 +26,13 @@ RUN npm ci --omit=dev --workspaces --include-workspace-root --ignore-scripts && 
 COPY --from=build /src/packages/gnap-caep-risc-nodejs/dist packages/gnap-caep-risc-nodejs/dist
 COPY demo/server.ts demo/uid-claim.ts demo/gnap.json demo/
 COPY demo/public demo/public
-COPY scripts/trust-chain.mjs scripts/trust-chain.mjs
+COPY scripts/trust-chain.mjs scripts/redirects.mjs scripts/
 COPY demo/entrypoint.sh /entrypoint.sh
 RUN chmod 755 /entrypoint.sh
 USER node
 EXPOSE 3000
+ENV PORT=3000
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s \
-  CMD wget -qO- http://127.0.0.1:3000/healthz >/dev/null || exit 1
+  CMD wget -qO- http://127.0.0.1:${PORT}/healthz >/dev/null || exit 1
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["node", "demo/server.ts"]

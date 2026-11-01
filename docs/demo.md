@@ -19,7 +19,7 @@ ADMIN_API_CLIENT_SECRET=… GNAP_DEMO_USER_PASSWORD=… npm run configure-iya-st
 docker compose up --build
 ```
 
-Open <http://localhost:3000> and sign in as `gnap-demo-user`.
+Open <http://localhost:3000> and sign in as `gnap-demo-user`. `PORT` defaults to 3000. A loopback finish URI follows `PORT`, and `configure-iya-sts` registers that URI.
 
 `generate-key` writes `demo/generated/client.key` and `demo/generated/client.crt`. `configure-iya-sts` registers the public certificate as the GNAP key, proof `mtls`, and writes `demo/generated/idp-ca.pem`. That second file is the listener CA trust chain, and it is what `tlsCa` in `demo/gnap.json` names. Compose mounts the directory into the container. The files are not in the image. When the container starts, it fetches the chain again and updates that file, so a rebuilt listener certificate is picked up without a second setup run.
 
