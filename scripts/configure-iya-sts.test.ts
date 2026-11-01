@@ -1,16 +1,18 @@
 // The setup script's plan, offline: a registered GNAP key, no class_id, no secret rotation, the full chain.
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { X509Certificate } from 'node:crypto';
 import https from 'node:https';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import type { ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
-import { createSelfSignedKeyPair } from '../packages/gnap-caep-risc-nodejs/src/x509.ts';
 import {
-  DEFAULT_LISTENER_CA, MULTIPLE_ACCOUNTS, SSF_ROLES, adminTls, fetchTlsChain, filesOf, idpFromGrant,
-  listenerCaTarget, parseArgs, planFor, realmOf, userAttributes, writeListenerCa,
+  MULTIPLE_ACCOUNTS, SSF_ROLES, adminTls, filesOf, idpFromGrant, parseArgs, planFor, realmOf, userAttributes,
 } from './configure-iya-sts.ts';
+import { fetchTrustChain, saveTrustChain, trustPath } from './trust-chain.mjs';
 
 describe('configure-iya-sts', () => {
   const dir = mkdtempSync(join(tmpdir(), 'gnap-setup-'));
@@ -36,6 +38,9 @@ describe('configure-iya-sts', () => {
     assert.equal(files.displayUri, 'http://localhost:3000/');
     assert.equal(files.name, 'GNAP CAEP RISC demo');
     assert.equal(files.tlsCa, join(dir, 'generated/idp-ca.pem'));
+    assert.equal(trustPath('file:generated/idp-ca.pem', dir), join(dir, 'generated/idp-ca.pem'));
+    assert.equal(trustPath('env:STS_LISTENER_CA', dir), undefined);
+    assert.equal(trustPath('-----BEGIN CERTIFICATE-----\nY\n-----END CERTIFICATE-----', dir), undefined);
     assert.deepEqual(files.scopes, ['ssf.read', 'ssf.manage']);
     assert.equal(files.keyProof, 'mtls');
     assert.equal(idpFromGrant(files.grantEndpoint), 'https://localhost:8081');
@@ -99,44 +104,48 @@ describe('configure-iya-sts', () => {
     assert.throws(() => parseArgs(['--bogus'], {}), /Unknown argument/);
   });
 
-  it('sets tlsCa to the file that holds the listener chain', () => {
-    const bare = join(dir, 'bare.json');
-    writeFileSync(bare, JSON.stringify({ grantEndpoint: 'https://idp.example/gnap', application: 'app' }));
-    const pem = '-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n';
-    const saved = writeListenerCa(bare, pem);
-    assert.equal(saved.parameter, DEFAULT_LISTENER_CA);
-    assert.equal(readFileSync(saved.file!, 'utf8'), pem);
-    const written = JSON.parse(readFileSync(bare, 'utf8')) as { tlsCa: string; application: string };
-    assert.equal(written.tlsCa, DEFAULT_LISTENER_CA);
-    assert.equal(written.application, 'app');
-    const again = writeListenerCa(bare, pem);
-    assert.equal(again.parameter, DEFAULT_LISTENER_CA);
-    const pinned = join(dir, 'env.json');
-    writeFileSync(pinned, `${JSON.stringify({ tlsCa: 'env:STS_LISTENER_CA', application: 'app' })}\n`);
-    const left = writeListenerCa(pinned, pem);
-    assert.equal(left.parameter, 'env:STS_LISTENER_CA');
-    assert.equal(left.file, undefined);
-    assert.equal(readFileSync(pinned, 'utf8'), `${JSON.stringify({ tlsCa: 'env:STS_LISTENER_CA', application: 'app' })}\n`);
-    assert.deepEqual(listenerCaTarget(bare, 'file:keys/ca.pem'), {
-      parameter: 'keys/ca.pem',
-      file: join(dir, 'keys/ca.pem'),
+  it('saves the published listener CA trust chain, and the handshake when that document is absent', async () => {
+    const work = mkdtempSync(join(tmpdir(), 'gnap-chain-'));
+    execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-keyout', join(work, 'key.pem'), '-out', join(work, 'cert.pem'), '-days', '1', '-nodes', '-subj', '/CN=localhost'], { stdio: 'ignore' });
+    const certificatePem = readFileSync(join(work, 'cert.pem'), 'utf8');
+    const key = readFileSync(join(work, 'key.pem'));
+    const leaf = new X509Certificate(certificatePem);
+    const listen = (handler: (url: string | undefined, res: ServerResponse) => void) => new Promise<https.Server>((resolve) => {
+      const server = https.createServer({ key, cert: certificatePem }, (req, res) => handler(req.url, res));
+      server.listen(0, '127.0.0.1', () => resolve(server));
     });
-  });
+    const close = (server: https.Server) => new Promise<void>((resolve) => server.close(() => resolve()));
 
-  it('saves every certificate in the handshake', async () => {
-    const pair = createSelfSignedKeyPair({ commonName: 'localhost', dns: ['localhost'], ip: ['127.0.0.1'] });
-    const server = https.createServer({ key: pair.privateKeyPem, cert: pair.certificatePem }, (_req, res) => {
-      res.end('ok');
+    const published = await listen((_url, res) => {
+      res.setHeader('content-type', 'text/plain');
+      res.end(`${certificatePem}${certificatePem}`);
     });
-    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     try {
-      const port = (server.address() as AddressInfo).port;
-      const chain = await fetchTlsChain(`https://127.0.0.1:${port}`);
-      assert.match(chain.pem, /BEGIN CERTIFICATE/);
-      assert.equal(chain.count, 1);
-      assert.equal(chain.leaf.fingerprint256, pair.certificate.fingerprint256);
+      const origin = `https://127.0.0.1:${(published.address() as AddressInfo).port}`;
+      const chain = await fetchTrustChain(origin);
+      assert.equal(chain.count, 2);
+      assert.equal(chain.anchor.fingerprint256, leaf.fingerprint256);
+      const dest = join(work, 'idp-ca.pem');
+      writeFileSync(dest, 'stale\n');
+      const saved = await saveTrustChain(origin, dest);
+      assert.equal(saved.count, 2);
+      assert.match(readFileSync(dest, 'utf8'), /BEGIN CERTIFICATE/);
+      assert.doesNotMatch(readFileSync(dest, 'utf8'), /stale/);
     } finally {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await close(published);
+    }
+
+    const handshakeOnly = await listen((_url, res) => {
+      res.statusCode = 404;
+      res.end('no');
+    });
+    try {
+      const origin = `https://127.0.0.1:${(handshakeOnly.address() as AddressInfo).port}`;
+      const chain = await fetchTrustChain(origin);
+      assert.equal(chain.count, 1);
+      assert.equal(chain.anchor.fingerprint256, leaf.fingerprint256);
+    } finally {
+      await close(handshakeOnly);
     }
   });
 });

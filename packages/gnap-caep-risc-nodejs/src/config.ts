@@ -52,7 +52,8 @@ export interface GnapConfigFile {
   /**
    * The authorization server's listener CA chain: PEM, `file:path`, `env:NAME`, or a path.
    * A missing file is ignored, so a demo can name a chain the setup script has not written yet.
-   * `configure-iya-sts` and the demo container set this from the listener's handshake.
+   * iya-sts publishes the bundle at `GET /tls/server-certificate`. `configure-iya-sts` and the
+   * demo container write that file from it.
    */
   tlsCa?: string;
   /** Allow an `http` grant endpoint, and a non-loopback `http` finish URI. Default false. */

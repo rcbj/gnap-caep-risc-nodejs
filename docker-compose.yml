@@ -4,11 +4,11 @@ services:
     image: gnap-caep-risc-nodejs-demo
     # The host's network, so that https://localhost:8081 (the authorization server, and the Shared
     # Signals transmitter this server polls) is the same address inside the container as in the browser.
-    # The entrypoint reads that listener's certificate chain and sets tlsCa before the server starts.
     # On Docker Desktop, turn on host networking (Settings → Resources → Network).
     network_mode: host
     environment:
       PORT: ${PORT:-3000}
     volumes:
-      - ./demo/generated:/app/demo/generated:ro
+      # Read-write so the entrypoint can refresh demo/generated/idp-ca.pem, the file tlsCa names.
+      - ./demo/generated:/app/demo/generated
     stop_grace_period: 5s

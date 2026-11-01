@@ -31,7 +31,9 @@ The names that [gnap-caep-js](https://github.com/rcbj/gnap-caep-js) already uses
 }
 ```
 
-`keyProof` is `mtls`, `httpsig`, or `jwsd`. When it is omitted, a certificate selects mutual TLS and anything else selects HTTP message signatures. `tlsCa` is the authorization server's listener CA chain. It is PEM, `file:path`, `env:NAME`, or a path. A missing file is ignored, so the process can still serve a page before the chain has been saved. `configure-iya-sts` and the demo container set it from the listener's handshake.
+`keyProof` is `mtls`, `httpsig`, or `jwsd`. When it is omitted, a certificate selects mutual TLS and anything else selects HTTP message signatures. `tlsCa` is the CA trust chain for the authorization server's TLS listener: a PEM bundle, `file:path`, `env:NAME`, or a path. iya-sts publishes that bundle at `GET /tls/server-certificate`. A missing file is ignored, so the process can still serve a page before the file exists.
+
+For iya-sts, [`scripts/configure-iya-sts.ts`](../../../scripts/configure-iya-sts.ts) registers the application and saves the listener CA trust chain into the file `tlsCa` names. The demo container refreshes that file when it starts.
 
 `privateKey` and `certificate` are PEM, `file:path` (next to the configuration), `env:NAME`, or a filesystem path. Keep the private key out of the image and out of version control. `certificate` may be a chain, leaf first: the grant request names the leaf, and mutual TLS presents the whole chain.
 

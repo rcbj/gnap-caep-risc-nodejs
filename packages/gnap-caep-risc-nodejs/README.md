@@ -36,7 +36,7 @@ The walkthrough is [the server-side guide](docs/guide.md). Events are [Handling 
 | `hashMethod` | Only `sha-256`. Omitted from the request, which is the default method. |
 | `requireBoundTokens` | Default true. A `bearer` flag is then an error. |
 | `useInstanceId` | Default true. After the first response, `client` is the instance id string. |
-| `tlsCa` | The authorization server's listener CA chain: PEM, `file:path`, `env:NAME`, or a path. A missing file is ignored. |
+| `tlsCa` | CA trust chain for the authorization server's TLS listener. PEM, `file:path`, `env:NAME`, or a path, trusted in addition to node's own store. A missing file is ignored. |
 | `allowInsecure` | Allow an `http` grant endpoint and a non-loopback `http` finish URI. Default false. |
 | `clockToleranceSec` | ID token skew. Default 30. |
 | `maxWaitSec` | The longest one continuation may be delayed by `continue.wait` or `too_fast`. Default 30. |

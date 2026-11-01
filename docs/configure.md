@@ -14,7 +14,13 @@ node scripts/configure-iya-sts.ts --dry-run
 
 The token is minted the way iya-sts's own tools mint one: the seeded client `sts-api-client`, grant `client_credentials`, HTTP Basic, audience `<base>/admin-api`, scope `admin:read admin:write`. The secret is `ADMIN_API_CLIENT_SECRET` or `STS_ADMIN_API_CLIENT_SECRET`. On a compose stack that secret is in OpenBao; iya-sts's management API docs say how to read it.
 
-Those management calls do not verify TLS (`rejectUnauthorized` false). The demo does not do that. The script takes the listener's certificate chain from the handshake, leaf through root, and sets `tlsCa` to the file that holds it. A configuration that does not name a file gets `generated/idp-ca.pem`. An `env:` value is left as the parameter. The script prints the leaf's SHA-256 fingerprint. Compare that fingerprint with the certificate on iya-sts's main port before you rely on the file.
+Those management calls do not verify TLS (`rejectUnauthorized` false). The demo does not do that.
+
+## TLS
+
+`tlsCa` in the configuration is the CA trust chain for the STS listener certificate. The demo's file names `demo/generated/idp-ca.pem`. Every run rewrites that file from `GET /tls/server-certificate`: the listener certificate, the intermediates, and the root. That is the bundle iya-sts tells a client to trust. The first fetch does not verify TLS, because there is nothing to verify it against until the file exists. If that document is not served, the script saves the chain the handshake presented instead.
+
+The script prints the trust anchor's SHA-256 fingerprint. Compare it with the Root CA on iya-sts's Server configuration, PKI page. A certified listener certificate on its own is not an anchor: the chain has to include the root that signed it. Later calls trust this file in addition to node's own store. An inline PEM or an `env:` value is left as the parameter.
 
 ## What it registers
 

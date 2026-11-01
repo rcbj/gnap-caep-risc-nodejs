@@ -25,8 +25,6 @@ export { GnapError } from './errors.ts';
 export type { GnapErrorCode } from './errors.ts';
 export { interactionHash } from './hash.ts';
 export { loadClientKey, publicKeyObject } from './keys.ts';
-export { fetchTlsChain } from './trust.ts';
-export type { TlsChain } from './trust.ts';
 export type { ClientKey, KeyProof, PublicJwk } from './keys.ts';
 export { personFrom } from './subject.ts';
 export type { Person } from './subject.ts';
