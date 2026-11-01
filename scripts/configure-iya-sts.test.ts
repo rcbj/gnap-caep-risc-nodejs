@@ -99,6 +99,37 @@ describe('configure-iya-sts', () => {
     assert.equal(adminTls().rejectUnauthorized, false);
   });
 
+  it('does not register SSF roles when signals is false', () => {
+    const off = join(dir, 'signals-off.json');
+    writeFileSync(off, JSON.stringify({
+      grantEndpoint: 'https://localhost:8081/gnap',
+      application: 'plain-client',
+      access: ['openid', 'ssf.read', ' ssf.manage '],
+      signals: false,
+      finishUri: 'http://localhost:3000/callback',
+      ssf: { transmitter: 'https://localhost:8081' },
+    }));
+    const files = filesOf(off, 'http://localhost:3000');
+    assert.deepEqual(files.scopes, ['openid']);
+    assert.equal(files.transmitter, undefined);
+    const plan = planFor(files, 'https://localhost:8081', 'gnap-demo-user', '{}');
+    const roles = plan.filter((call) => call.path.endsWith('/roles/add-member'));
+    assert.deepEqual(roles, []);
+    const groups = plan.filter((call) => call.path.endsWith('/groups/add-member'));
+    assert.deepEqual(groups, []);
+    const omitted = join(dir, 'signals-off-default-access.json');
+    writeFileSync(omitted, JSON.stringify({
+      grantEndpoint: 'https://localhost:8081/gnap',
+      application: 'plain-client',
+      signals: false,
+      finishUri: 'http://localhost:3000/callback',
+    }));
+    const bare = filesOf(omitted, 'http://localhost:3000');
+    assert.deepEqual(bare.scopes, []);
+    assert.equal(planFor(bare, 'https://localhost:8081', 'gnap-demo-user', '{}')
+      .some((call) => call.path.endsWith('/roles/add-member') || call.path.endsWith('/groups/add-member')), false);
+  });
+
   it('keeps a realm base and refuses any other path', () => {
     assert.deepEqual(realmOf('https://idp.test/realm/acme'), { origin: 'https://idp.test', base: 'https://idp.test/realm/acme' });
     assert.equal(idpFromGrant('https://idp.test/realm/acme/gnap'), 'https://idp.test/realm/acme');

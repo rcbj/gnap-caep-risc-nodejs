@@ -11,8 +11,9 @@
  *      redirect as the only start mode, gnapBearerTokens FALSE, and oauthAllowedScope from `access`.
  *      A re-run does not send the key again. No class_id and no browser origin;
  *   3. membership of SSF_READ and SSF_MANAGE for whichever of ssf.read and ssf.manage `access` names,
- *      and authn.multipleAccounts so one browser can hold several people;
- *   4. a test user, gnap-demo-user, in the groups ssf-read and ssf-manage.
+ *      and authn.multipleAccounts so one browser can hold several people. `signals: false` ignores
+ *      those two rights even when they are still listed, and does not need a transmitter;
+ *   4. a test user, gnap-demo-user, in the groups ssf-read and ssf-manage when those rights remain.
  *
  * The key is written by `npm run generate-key`, not by this script.
  *
@@ -148,6 +149,7 @@ export function filesOf(configPath: string, publicUrl: string): DemoFiles {
     tlsCa?: string;
     transmitterIssuer?: string;
     ssf?: { transmitter?: string };
+    signals?: unknown;
   };
   const base = dirname(configPath);
   const application = String(raw.application ?? '').trim();
@@ -156,10 +158,13 @@ export function filesOf(configPath: string, publicUrl: string): DemoFiles {
   if (!grantEndpoint) throw new Error(`${configPath} has no grantEndpoint`);
   const origin = publicUrl.endsWith('/') ? publicUrl : `${publicUrl}/`;
   const finishUri = String(raw.finishUri ?? '').trim() || new URL('callback', origin).href;
+  const signalsOff = raw.signals === false;
   const access = Array.isArray(raw.access) ? raw.access : ['ssf.read', 'ssf.manage'];
-  const scopes = access.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+  const scopes = access
+    .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    .filter((item) => !signalsOff || (item.trim() !== 'ssf.read' && item.trim() !== 'ssf.manage'));
   const keyProof = String(raw.keyProof ?? (raw.certificate ? 'mtls' : 'httpsig'));
-  const transmitter = (raw.ssf?.transmitter ?? raw.transmitterIssuer)?.replace(/\/+$/, '');
+  const transmitter = signalsOff ? undefined : (raw.ssf?.transmitter ?? raw.transmitterIssuer)?.replace(/\/+$/, '');
   const tlsCa = trustPath(raw.tlsCa, base);
   return {
     application,
