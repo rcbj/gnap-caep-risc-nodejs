@@ -47,7 +47,7 @@
     "shared-signals",
     "ssf"
   ],
-  "license": "BUSL-1.1",
+  "license": "MIT",
   "engines": {
     "node": ">=22.18.0"
   },
