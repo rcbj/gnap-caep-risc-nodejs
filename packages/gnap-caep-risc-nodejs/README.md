@@ -12,7 +12,7 @@ const started = await gnap.requestGrant();
 const done = await gnap.finishRedirect(query, { allowedIds });
 ```
 
-The walkthrough is [the server-side guide](docs/guide.md). Events are [Handling CAEP and RISC events](docs/signals.md). The license is the [Business Source License 1.1](LICENSE).
+The walkthrough is [the server-side guide](docs/guide.md). Events are [Handling CAEP and RISC events](docs/signals.md). The license is the [MIT License](LICENSE).
 
 ## Configuration
 

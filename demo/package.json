@@ -10,5 +10,5 @@
   "dependencies": {
     "gnap-caep-risc-nodejs": "*"
   },
-  "license": "BUSL-1.1"
+  "license": "MIT"
 }
