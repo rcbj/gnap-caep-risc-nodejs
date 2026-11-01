@@ -4,6 +4,8 @@ A GNAP application owns one Shared Signals stream. iya-sts scopes that stream to
 
 The rights are the strings `ssf.read` and `ssf.manage`. iya-sts grants them only when the application's `oauthAllowedScope` declares them, and the person approves them. Put the application in the roles `SSF_READ` and `SSF_MANAGE` as well. [`scripts/configure-iya-sts.ts`](../../../scripts/configure-iya-sts.ts) does both.
 
+`signals` defaults to on, so an existing configuration keeps receiving events. `signals: false` turns CAEP and RISC off. The client then drops `ssf.read` and `ssf.manage`, does not require transmitter metadata, does not fetch `/.well-known/ssf-configuration`, and does not start `SignalsReceiver`. The grant's subject request is unchanged. If those two were the only access rights, set `access` to a right the authorization server grants. `SignalsReceiver` stays exported. The setup script also ignores those two rights when the flag is false, and does not require a transmitter.
+
 ## Authentication
 
 Every management call and every poll presents a GNAP access token and the key proof:

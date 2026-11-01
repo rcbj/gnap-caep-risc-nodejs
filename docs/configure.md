@@ -33,11 +33,13 @@ The application id is the file's `application` (`gnap-caep-risc-demo`). The kind
 | `gnapInteractionStartModes` | `redirect` |
 | `gnapBearerTokens` | `FALSE`, so iya-sts refuses a `bearer` flag for this client |
 | `gnapDisplayUri` | the file's `display.uri`, moved the same way when it is loopback |
-| `oauthAllowedScope` | the string rights in `access`, `ssf.read` and `ssf.manage` |
+| `oauthAllowedScope` | the string rights in `access`. The default is `ssf.read` and `ssf.manage`. `signals: false` leaves those two out even if the file still lists them |
 
 No `class_id` is registered, and no browser origin. This client is a server. A re-run that finds the application already in the registry adds the finish URI, the start mode and the scopes, and sets the bearer flag and the display URI. A single-valued field goes through `applications/set`; `applications/add` refuses it. The re-run does not send `gnapKey` again. A new key means a new registration, or setting `gnapKey` yourself.
 
-It also turns on `authn.multipleAccounts`. GNAP's account hint is soft, and a second sign-in in the same browser ends the first provider session unless the realm allows more than one. The test user is `gnap-demo-user`, in the groups `ssf-read` and `ssf-manage`. The password is `GNAP_DEMO_USER_PASSWORD`, or one is generated and printed once. The application is added to the roles `SSF_READ` and `SSF_MANAGE`.
+It also turns on `authn.multipleAccounts`. GNAP's account hint is soft, and a second sign-in in the same browser ends the first provider session unless the realm allows more than one. The test user is `gnap-demo-user`, in the groups `ssf-read` and `ssf-manage` when those rights are still requested. The password is `GNAP_DEMO_USER_PASSWORD`, or one is generated and printed once. The application is added to the roles `SSF_READ` and `SSF_MANAGE` for whichever of those two rights `access` still names.
+
+`signals` defaults to on. The shipped `demo/gnap.json` does not set it, so the demo still receives events. `signals: false` turns CAEP and RISC off: the script does not register `ssf.read` or `ssf.manage`, does not add those roles or groups, and does not require a transmitter. If those two were the only rights, set `access` to a right the authorization server grants.
 
 Every run sets one custom claim on the application's GNAP access-token JWT: the name `uid`, the value `${username}`. iya-sts expands that to the directory username when it mints a `jwt-signed` token (and the JWT inside a `jwt-encrypted` one). The demo heading reads that claim. A re-run replaces the row of the same name.
 
