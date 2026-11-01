@@ -29,14 +29,14 @@ The walkthrough is [the server-side guide](docs/guide.md). Events are [Handling 
 | `subIdFormats` | Default `iss_sub`, `account`, `opaque`. Filtered to what the grant server advertises. |
 | `assertionFormats` | Default `id_token`. |
 | `keyProof` | `mtls`, `httpsig`, or `jwsd`. Default `mtls` when `certificate` is set, otherwise `httpsig`. |
-| `certificate` | PEM. Required for mutual TLS. The public key must be the private key's. Sent as PEM inside `gnapKey`. |
+| `certificate` | PEM. Required for mutual TLS. A chain is leaf first: the key is the leaf, and the handshake sends the whole chain. |
 | `finishUri` | Redirect or push target. Loopback `http` is allowed. |
 | `finishMethod` | `redirect` (default) or `push`. |
 | `interactionStart` | Default `["redirect"]`. |
 | `hashMethod` | Only `sha-256`. Omitted from the request, which is the default method. |
 | `requireBoundTokens` | Default true. A `bearer` flag is then an error. |
 | `useInstanceId` | Default true. After the first response, `client` is the instance id string. |
-| `tlsCa` | Extra trust: PEM, `file:path`, `env:NAME`, or a path. A missing file is ignored. |
+| `tlsCa` | The authorization server's listener CA chain: PEM, `file:path`, `env:NAME`, or a path. A missing file is ignored. |
 | `allowInsecure` | Allow an `http` grant endpoint and a non-loopback `http` finish URI. Default false. |
 | `clockToleranceSec` | ID token skew. Default 30. |
 | `maxWaitSec` | The longest one continuation may be delayed by `continue.wait` or `too_fast`. Default 30. |

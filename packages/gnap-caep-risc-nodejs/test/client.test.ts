@@ -8,7 +8,7 @@ import https from 'node:https';
 import type { AddressInfo } from 'node:net';
 import type { IncomingMessage } from 'node:http';
 import { after, before, describe, it } from 'node:test';
-import { GnapClient, GnapError, createSelfSignedKeyPair, interactionHash, type KeyProof } from '../src/index.ts';
+import { GnapClient, GnapError, createSelfSignedKeyPair, interactionHash, loadClientKey, publicKeyObject, type KeyProof } from '../src/index.ts';
 
 const idKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const idJwk = { ...idKeys.publicKey.export({ format: 'jwk' }), kid: 'id1', alg: 'RS256', use: 'sig' };
@@ -374,5 +374,26 @@ describe('the GNAP client', { concurrency: 1 }, () => {
     assert.equal(fresh.accessToken, 'access-2');
     const held = await gnap.ensureFresh({ ...fresh, expiresAt: Date.now() + 3_600_000 });
     assert.equal(held.accessToken, 'access-2');
+  });
+});
+
+describe('a certificate chain', () => {
+  it('puts the leaf in the GNAP key and the chain on the TLS handshake', () => {
+    const leaf = createSelfSignedKeyPair({ commonName: 'leaf.example' });
+    const issuer = createSelfSignedKeyPair({ commonName: 'issuer.example' });
+    const chain = `${leaf.certificatePem.trim()}\n${issuer.certificatePem.trim()}\n`;
+    const key = loadClientKey(leaf.privateKeyPem, chain, 'mtls');
+    const published = publicKeyObject(key);
+    assert.equal(String(published.cert).match(/BEGIN CERTIFICATE/g)?.length, 1);
+    assert.equal(new X509Certificate(String(published.cert)).fingerprint256, leaf.certificate.fingerprint256);
+    const gnap = GnapClient.create(GnapClient.resolve({
+      grantEndpoint: 'https://as.example/gnap',
+      application: 'chain-demo',
+      keyProof: 'mtls',
+      privateKey: leaf.privateKeyPem,
+      certificate: chain,
+      finishUri: 'http://127.0.0.1:9/callback',
+    }, process.cwd()));
+    assert.equal(gnap.tls().cert?.match(/BEGIN CERTIFICATE/g)?.length, 2);
   });
 });

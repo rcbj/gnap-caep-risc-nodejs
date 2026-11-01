@@ -28,8 +28,14 @@ export interface ClientKey {
   privateKey: KeyObject;
   /** Set for `httpsig` and `jwsd`. */
   jwk?: PublicJwk;
-  /** Set for `mtls`, and whenever a certificate was configured. PEM. */
+  /** The leaf, PEM. This is the `cert` member of a mutual-TLS key. */
   certificatePem?: string;
+  /**
+   * What mutual TLS presents: the leaf, then any intermediates that were in the same file.
+   * A grant request names only the leaf. The handshake needs the intermediates or the
+   * authorization server cannot build a path to its trust anchor.
+   */
+  tlsChainPem?: string;
   /** RFC 7638 thumbprint of the JWK, or x5t#S256 of the certificate. */
   thumbprint: string;
   /** JWS `alg` (`ES256`, `RS256`, `EdDSA`, ...). HTTP signatures do not send it. */
@@ -114,9 +120,15 @@ function publicFrom(privateKey: KeyObject): PublicJwk {
   };
 }
 
+/** PEM certificates in the order they appear. A chain file is leaf first. */
+function certificateBlocks(pem: string): string[] {
+  return pem.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g) ?? [];
+}
+
 /**
  * Loads the private key and, when mutual TLS is the proof or a certificate was given, checks that the
  * certificate is that key's. `proof` defaults to mutual TLS when a certificate is present.
+ * A file with several certificates is a chain: the key is the first, and the handshake sends all of them.
  */
 export function loadClientKey(privateKeyPem: string, certificatePem: string | undefined, proof: KeyProof | undefined): ClientKey {
   let privateKey: KeyObject;
@@ -140,9 +152,12 @@ export function loadClientKey(privateKeyPem: string, certificatePem: string | un
   const chosen: KeyProof = proof ?? (certificate ? 'mtls' : 'httpsig');
   if (chosen === 'mtls' && !certificate) throw new GnapError('config', 'keyProof "mtls" needs certificate');
   if (chosen === 'mtls') {
+    const blocks = certificateBlocks(certificatePem!);
+    const leafPem = `${(blocks[0] ?? certificatePem!).trim()}\n`;
+    const tlsChainPem = `${(blocks.length ? blocks : [certificatePem!]).map((block) => block.trim()).join('\n')}\n`;
     const thumbprint = createHash('sha256').update(certificate!.raw).digest('base64url');
     return {
-      proof: 'mtls', privateKey, jwk, certificatePem: certificatePem!.trim() + (certificatePem!.endsWith('\n') ? '' : '\n'),
+      proof: 'mtls', privateKey, jwk, certificatePem: leafPem, tlsChainPem,
       thumbprint, alg: jwk.alg, kid: jwk.kid,
     };
   }

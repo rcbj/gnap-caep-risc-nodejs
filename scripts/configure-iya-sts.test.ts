@@ -1,14 +1,15 @@
 // The setup script's plan, offline: a registered GNAP key, no class_id, no secret rotation, the full chain.
 import assert from 'node:assert/strict';
 import https from 'node:https';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { createSelfSignedKeyPair } from '../packages/gnap-caep-risc-nodejs/src/x509.ts';
 import {
-  MULTIPLE_ACCOUNTS, SSF_ROLES, adminTls, fetchTlsChain, filesOf, idpFromGrant, parseArgs, planFor, realmOf, userAttributes,
+  DEFAULT_LISTENER_CA, MULTIPLE_ACCOUNTS, SSF_ROLES, adminTls, fetchTlsChain, filesOf, idpFromGrant,
+  listenerCaTarget, parseArgs, planFor, realmOf, userAttributes, writeListenerCa,
 } from './configure-iya-sts.ts';
 
 describe('configure-iya-sts', () => {
@@ -96,6 +97,30 @@ describe('configure-iya-sts', () => {
     assert.equal(args.config.endsWith('/demo/gnap.json'), true);
     assert.throws(() => parseArgs(['--idp', 'http://idp.test'], {}), /https/);
     assert.throws(() => parseArgs(['--bogus'], {}), /Unknown argument/);
+  });
+
+  it('sets tlsCa to the file that holds the listener chain', () => {
+    const bare = join(dir, 'bare.json');
+    writeFileSync(bare, JSON.stringify({ grantEndpoint: 'https://idp.example/gnap', application: 'app' }));
+    const pem = '-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n';
+    const saved = writeListenerCa(bare, pem);
+    assert.equal(saved.parameter, DEFAULT_LISTENER_CA);
+    assert.equal(readFileSync(saved.file!, 'utf8'), pem);
+    const written = JSON.parse(readFileSync(bare, 'utf8')) as { tlsCa: string; application: string };
+    assert.equal(written.tlsCa, DEFAULT_LISTENER_CA);
+    assert.equal(written.application, 'app');
+    const again = writeListenerCa(bare, pem);
+    assert.equal(again.parameter, DEFAULT_LISTENER_CA);
+    const pinned = join(dir, 'env.json');
+    writeFileSync(pinned, `${JSON.stringify({ tlsCa: 'env:STS_LISTENER_CA', application: 'app' })}\n`);
+    const left = writeListenerCa(pinned, pem);
+    assert.equal(left.parameter, 'env:STS_LISTENER_CA');
+    assert.equal(left.file, undefined);
+    assert.equal(readFileSync(pinned, 'utf8'), `${JSON.stringify({ tlsCa: 'env:STS_LISTENER_CA', application: 'app' })}\n`);
+    assert.deepEqual(listenerCaTarget(bare, 'file:keys/ca.pem'), {
+      parameter: 'keys/ca.pem',
+      file: join(dir, 'keys/ca.pem'),
+    });
   });
 
   it('saves every certificate in the handshake', async () => {

@@ -160,8 +160,11 @@ export class GnapClient {
   tls(): TlsOptions {
     return {
       ...(this.config.tlsCa ? { ca: this.config.tlsCa } : {}),
-      ...(this.config.key.proof === 'mtls' && this.config.key.certificatePem
-        ? { cert: this.config.key.certificatePem, key: this.config.key.privateKey.export({ type: 'pkcs8', format: 'pem' }) as string }
+      ...(this.config.key.proof === 'mtls' && (this.config.key.tlsChainPem || this.config.key.certificatePem)
+        ? {
+            cert: this.config.key.tlsChainPem ?? this.config.key.certificatePem,
+            key: this.config.key.privateKey.export({ type: 'pkcs8', format: 'pem' }) as string,
+          }
         : {}),
     };
   }

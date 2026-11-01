@@ -14,7 +14,7 @@ node scripts/configure-iya-sts.ts --dry-run
 
 The token is minted the way iya-sts's own tools mint one: the seeded client `sts-api-client`, grant `client_credentials`, HTTP Basic, audience `<base>/admin-api`, scope `admin:read admin:write`. The secret is `ADMIN_API_CLIENT_SECRET` or `STS_ADMIN_API_CLIENT_SECRET`. On a compose stack that secret is in OpenBao; iya-sts's management API docs say how to read it.
 
-Those management calls do not verify TLS (`rejectUnauthorized` false). A development iya-sts presents a certificate node does not trust yet. The demo does not do that: the script saves the whole chain the handshake presented, leaf through root, to `demo/generated/idp-ca.pem`, and prints the leaf's SHA-256 fingerprint. Compare that fingerprint with the certificate on iya-sts's main port before you rely on the file.
+Those management calls do not verify TLS (`rejectUnauthorized` false). The demo does not do that. The script takes the listener's certificate chain from the handshake, leaf through root, and sets `tlsCa` to the file that holds it. A configuration that does not name a file gets `generated/idp-ca.pem`. An `env:` value is left as the parameter. The script prints the leaf's SHA-256 fingerprint. Compare that fingerprint with the certificate on iya-sts's main port before you rely on the file.
 
 ## What it registers
 

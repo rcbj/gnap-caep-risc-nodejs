@@ -2,10 +2,10 @@
 /**
  * Registers the demo as a GNAP client on a running iya-sts.
  *
- *   1. the provider's TLS chain, if the configuration's tlsCa file does not exist yet, taken from the
- *      handshake (trust on first use) and the leaf's fingerprint printed. The demo trusts that file.
- *      The management calls below do not: a development iya-sts is often self-signed, so they skip
- *      verification;
+ *   1. the provider's listener CA chain, taken from the handshake and written to the file `tlsCa`
+ *      names. When `tlsCa` is missing or is inline PEM, it is set to generated/idp-ca.pem. An `env:`
+ *      value is left as the parameter. The leaf's fingerprint is printed. The management calls below
+ *      do not use that file: a development iya-sts is often self-signed, so they skip verification;
  *   2. the application, in the realm the grant endpoint names: kind gnap-client, protocol gnap, the
  *      public key from the configuration (mutual TLS sends the certificate as PEM), the finish URI,
  *      redirect as the only start mode, gnapBearerTokens FALSE, and oauthAllowedScope from `access`.
@@ -24,13 +24,14 @@
  * ADMIN_API_CLIENT_SECRET or STS_ADMIN_API_CLIENT_SECRET.
  */
 
-import { X509Certificate } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, resolve } from 'node:path';
-import { connect, type DetailedPeerCertificate } from 'node:tls';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { GnapClient, publicKeyObject } from '../packages/gnap-caep-risc-nodejs/src/index.ts';
 import { send } from '../packages/gnap-caep-risc-nodejs/src/http.ts';
+import { fetchTlsChain } from '../packages/gnap-caep-risc-nodejs/src/trust.ts';
+
+export { fetchTlsChain };
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -285,50 +286,38 @@ export function planFor(files: DemoFiles, base: string, testUser: string, keyJso
   return calls;
 }
 
-export interface TlsChain {
-  pem: string;
-  leaf: X509Certificate;
-  count: number;
+/** Where a configuration that does not already name a file keeps the listener chain. */
+export const DEFAULT_LISTENER_CA = 'generated/idp-ca.pem';
+
+/**
+ * The `tlsCa` value to write, and the file that holds the chain.
+ * An `env:` parameter is left alone. Inline PEM and a missing parameter become the default file.
+ */
+export function listenerCaTarget(configPath: string, tlsCa: string | undefined): { parameter: string; file?: string } {
+  if (tlsCa?.startsWith('env:')) return { parameter: tlsCa };
+  const raw = tlsCa && !tlsCa.includes('-----BEGIN') ? (tlsCa.startsWith('file:') ? tlsCa.slice(5) : tlsCa) : DEFAULT_LISTENER_CA;
+  const base = dirname(configPath);
+  const file = isAbsolute(raw) ? raw : resolve(base, raw);
+  const parameter = isAbsolute(raw) ? raw : relative(base, file).split('\\').join('/');
+  return { parameter, file };
 }
 
-/** Every certificate the provider presents, leaf first. Verification is off: this is the first trust. */
-export function fetchTlsChain(origin: string): Promise<TlsChain> {
-  const u = new URL(origin);
-  return new Promise((resolvePromise, reject) => {
-    const socket = connect({
-      host: u.hostname,
-      port: Number(u.port || 443),
-      servername: u.hostname,
-      rejectUnauthorized: false,
-    }, () => {
-      const certs: X509Certificate[] = [];
-      const seen = new Set<string>();
-      let current: DetailedPeerCertificate | undefined = socket.getPeerCertificate(true);
-      while (current?.raw && current.fingerprint256 && !seen.has(current.fingerprint256)) {
-        seen.add(current.fingerprint256);
-        certs.push(new X509Certificate(current.raw));
-        const next: DetailedPeerCertificate | undefined = current.issuerCertificate;
-        if (!next || next === current || !next.raw) break;
-        current = next;
-      }
-      socket.end();
-      const leaf = certs[0];
-      if (!leaf) {
-        reject(new Error(`no certificate from ${origin}`));
-        return;
-      }
-      resolvePromise({
-        pem: `${certs.map((cert) => cert.toString().trim()).join('\n')}\n`,
-        leaf,
-        count: certs.length,
-      });
-    });
-    socket.setTimeout(10_000, () => {
-      socket.destroy();
-      reject(new Error(`${origin} did not complete a TLS handshake`));
-    });
-    socket.on('error', reject);
-  });
+/**
+ * Saves the listener chain and sets `tlsCa` in the configuration to that file.
+ * Returns the parameter that was written. An `env:` value is not changed and no file is written.
+ */
+export function writeListenerCa(configPath: string, pem: string): { parameter: string; file?: string } {
+  const doc = JSON.parse(readFileSync(configPath, 'utf8')) as { tlsCa?: string };
+  const target = listenerCaTarget(configPath, doc.tlsCa);
+  if (!target.file) return target;
+  const body = pem.endsWith('\n') ? pem : `${pem}\n`;
+  mkdirSync(dirname(target.file), { recursive: true });
+  writeFileSync(target.file, body);
+  if (doc.tlsCa !== target.parameter) {
+    doc.tlsCa = target.parameter;
+    writeFileSync(configPath, `${JSON.stringify(doc, null, 2)}\n`);
+  }
+  return target;
 }
 
 async function json(url: string, init: { method?: string; headers?: Record<string, string>; body?: string }) {
@@ -385,8 +374,10 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     keyJson = '<the public key>';
   }
 
+  const configuredCa = (JSON.parse(readFileSync(args.config, 'utf8')) as { tlsCa?: string }).tlsCa;
+  const caTarget = listenerCaTarget(args.config, configuredCa);
   if (args.dryRun) {
-    if (files.tlsCa && !existsSync(files.tlsCa)) console.log(`# would save ${origin}'s TLS chain to ${files.tlsCa}`);
+    console.log(`# would set tlsCa to ${caTarget.parameter} from ${origin}'s listener chain`);
     console.log(`# key proof ${files.keyProof}; management calls set rejectUnauthorized false`);
     for (const call of planFor(files, base, args.testUser, keyJson)) {
       console.log(`${call.method} ${call.path}  # ${call.when}: ${call.why}\n${JSON.stringify(call.body ?? {}, null, 2)}`);
@@ -394,14 +385,11 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     return;
   }
 
-  if (files.tlsCa && !existsSync(files.tlsCa)) {
-    const chain = await fetchTlsChain(origin);
-    mkdirSync(dirname(files.tlsCa), { recursive: true });
-    writeFileSync(files.tlsCa, chain.pem);
-    console.log(`Saved ${origin}'s TLS chain (${chain.count} certificate(s)) to ${files.tlsCa} (trusted on first use):`);
-    console.log(`  ${chain.leaf.subject.replace(/\n/g, ', ')}\n  sha256 ${chain.leaf.fingerprint256}`);
-    console.log('  Compare the leaf with the certificate iya-sts presents on its main port.');
-  }
+  const chain = await fetchTlsChain(origin);
+  const saved = writeListenerCa(args.config, chain.pem);
+  console.log(`Set tlsCa to ${saved.parameter} from ${origin}'s listener chain (${chain.count} certificate(s)):`);
+  console.log(`  ${chain.leaf.subject.replace(/\n/g, ', ')}\n  sha256 ${chain.leaf.fingerprint256}`);
+  console.log('  Compare the leaf with the certificate iya-sts presents on its main port.');
 
   const adminSecret = process.env.ADMIN_API_CLIENT_SECRET || process.env.STS_ADMIN_API_CLIENT_SECRET || '';
   if (!adminSecret) throw new Error('neither ADMIN_API_CLIENT_SECRET nor STS_ADMIN_API_CLIENT_SECRET is set, so no /admin-api token can be minted.');

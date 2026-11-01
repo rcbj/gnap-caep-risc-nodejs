@@ -50,8 +50,9 @@ export interface GnapConfigFile {
   /** After the first response, send `client` as the `instance_id` string. Default true. */
   useInstanceId?: boolean;
   /**
-   * PEM certificates to trust for the authorization server: the PEM itself, `file:path`, `env:NAME`,
-   * or a path. A missing file is ignored, so a demo can name a CA the setup script has not written yet.
+   * The authorization server's listener CA chain: PEM, `file:path`, `env:NAME`, or a path.
+   * A missing file is ignored, so a demo can name a chain the setup script has not written yet.
+   * `configure-iya-sts` and the demo container set this from the listener's handshake.
    */
   tlsCa?: string;
   /** Allow an `http` grant endpoint, and a non-loopback `http` finish URI. Default false. */

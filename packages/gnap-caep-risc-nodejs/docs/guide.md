@@ -31,9 +31,9 @@ The names that [gnap-caep-js](https://github.com/rcbj/gnap-caep-js) already uses
 }
 ```
 
-`keyProof` is `mtls`, `httpsig`, or `jwsd`. When it is omitted, a certificate selects mutual TLS and anything else selects HTTP message signatures. `tlsCa` is extra trust for a provider whose certificate is not in node's store; a missing file is ignored, so the process can still serve a page before the setup script has written it.
+`keyProof` is `mtls`, `httpsig`, or `jwsd`. When it is omitted, a certificate selects mutual TLS and anything else selects HTTP message signatures. `tlsCa` is the authorization server's listener CA chain. It is PEM, `file:path`, `env:NAME`, or a path. A missing file is ignored, so the process can still serve a page before the chain has been saved. `configure-iya-sts` and the demo container set it from the listener's handshake.
 
-`privateKey` and `certificate` are PEM, `file:path` (next to the configuration), `env:NAME`, or a filesystem path. Keep the private key out of the image and out of version control.
+`privateKey` and `certificate` are PEM, `file:path` (next to the configuration), `env:NAME`, or a filesystem path. Keep the private key out of the image and out of version control. `certificate` may be a chain, leaf first: the grant request names the leaf, and mutual TLS presents the whole chain.
 
 `hashMethod` accepts only `sha-256`, which is the default, and it is left out of the grant request. `requireBoundTokens` defaults to true. `useInstanceId` defaults to true: after the first response, later grant requests send `client` as that instance id string, still proved by the same key.
 
