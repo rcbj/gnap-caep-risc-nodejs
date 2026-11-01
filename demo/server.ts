@@ -127,7 +127,9 @@ function tell(sid: string, event: string, data: unknown, id?: number): void {
 
 const shortType = (uri: string) => uri.replace(/^.*\/event-type\//, '');
 const familyOf = (uri: string): LoggedEvent['family'] => (/\/caep\//.test(uri) ? 'CAEP' : /\/risc\//.test(uri) ? 'RISC' : 'SSF');
-const who = (person: Person) => person.preferredUsername || person.email || person.name || person.sub;
+// The heading and the account list show the directory uid. The subject stays the protocol
+// subject, which is what Shared Signals match.
+const who = (person: Person) => person.uid || person.preferredUsername || person.email || person.name || person.sub;
 
 const LOG_SIZE = 25;
 let sequence = 0;
@@ -386,13 +388,16 @@ ${accounts.length > 1 ? '<form method="post" action="/logout" class="inline"><bu
 
 function claimRows(session: Session, gnap: GnapClient | undefined): string {
   const person = session.person;
-  const rows: Array<[string, string]> = [
-    ['Subject', person.sub],
-  ];
+  const username = person.uid || person.preferredUsername;
+  const rows: Array<[string, string]> = [];
+  if (username) rows.push(['Username', username]);
+  rows.push(['Subject', person.sub]);
   if (person.iss) rows.push(['Issuer', person.iss]);
   if (person.email) rows.push(['Email', person.email]);
   if (person.name) rows.push(['Name', person.name]);
-  if (person.preferredUsername) rows.push(['Preferred username', person.preferredUsername]);
+  if (person.preferredUsername && person.preferredUsername !== username) {
+    rows.push(['Preferred username', person.preferredUsername]);
+  }
   if (person.sid) rows.push(['Provider session', person.sid]);
   if (gnap) rows.push(['Key proof', gnap.security.keyProof]);
   rows.push(['Bound token', session.grant.bearer ? 'no' : 'yes']);

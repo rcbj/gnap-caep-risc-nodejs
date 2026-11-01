@@ -6,7 +6,7 @@ title: Running the demo
 
 The demo is a traditional web application. The server renders the pages. The browser holds a session cookie, not tokens. It is the same shape as the [saml2-sp-nodejs](https://github.com/rcbj/saml2-sp-nodejs) and [oidc-caep-risc-nodejs](https://github.com/rcbj/oidc-caep-risc-nodejs) demos: several accounts in one browser, an identity tab, a CAEP and RISC tab, a live event stream, verify, clear, sign-out of one account, and sign-out of all of them.
 
-The identity tab shows the GNAP subject: sub, email, name, issuer, provider session, the key proof, whether the token is bound, and the grant id. It does not show the token.
+The heading and the account list show the directory username (the uid, the user part of the `account` subject identifier). The identity tab also shows the GNAP subject: sub, email, name, issuer, provider session, the key proof, whether the token is bound, and the grant id. Shared Signals match the subject. The page does not show the token.
 
 ## With iya-sts
 

@@ -10,6 +10,12 @@ import { verifyCompactJws, type Jwk } from './ssf/jws.ts';
 export interface Person {
   sub: string;
   iss?: string;
+  /**
+   * Directory username: the user part of an RFC 9493 `account` identifier
+   * (`acct:uid@host`). iya-sts writes the directory uid there. `sub` stays the
+   * protocol subject.
+   */
+  uid?: string;
   email?: string;
   name?: string;
   preferredUsername?: string;
@@ -36,6 +42,19 @@ function strings(value: unknown): string[] {
 
 function num(value: unknown): number | undefined {
   return typeof value === 'number' ? value : undefined;
+}
+
+/** The user part of `acct:userpart@host`, percent-decoded. Anything else is not a username. */
+function uidFromAccount(uri: string): string | undefined {
+  const acct = /^acct:([^@]+)@(.+)$/.exec(uri);
+  const user = acct?.[1];
+  if (!user) return undefined;
+  try {
+    return decodeURIComponent(user);
+  } catch {
+    // A user part that is not valid percent-encoding is kept as sent.
+    return user;
+  }
 }
 
 /** Reads `subject` and, when it carries an `id_token`, verifies that assertion. */
@@ -83,6 +102,10 @@ export async function personFrom(subject: unknown, check: SubjectCheck): Promise
   if (!sub && opaque && typeof opaque.id === 'string') sub = opaque.id;
   if (!sub && account && typeof account.uri === 'string') sub = account.uri;
   if (!sub) return undefined;
+  // RFC 9493 `account` (RFC 7565 `acct:userpart@host`). iya-sts writes the directory uid as the
+  // user part, so it names the person where `sub` is an opaque identifier. The subject itself is
+  // left as the protocol subject: Shared Signals match that, not the uid.
+  const uid = account && typeof account.uri === 'string' ? uidFromAccount(account.uri) : undefined;
   const email = typeof claims.email === 'string' ? claims.email : undefined;
   const name = typeof claims.name === 'string' ? claims.name : undefined;
   const preferredUsername = typeof claims.preferred_username === 'string' ? claims.preferred_username : undefined;
@@ -92,6 +115,7 @@ export async function personFrom(subject: unknown, check: SubjectCheck): Promise
   return {
     sub, claims, assertionVerified: verified,
     ...(iss ? { iss } : {}),
+    ...(uid ? { uid } : {}),
     ...(email ? { email } : {}),
     ...(name ? { name } : {}),
     ...(preferredUsername ? { preferredUsername } : {}),
