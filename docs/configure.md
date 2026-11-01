@@ -35,8 +35,10 @@ The application id is the file's `application` (`gnap-caep-risc-demo`). The kind
 | `gnapDisplayUri` | the file's `display.uri` |
 | `oauthAllowedScope` | the string rights in `access`, `ssf.read` and `ssf.manage` |
 
-No `class_id` is registered, and no browser origin. This client is a server. A re-run that finds the application already in the registry adds the finish URI, the start mode, the scopes and the bearer flag. It does not send `gnapKey` again. A new key means a new registration, or setting `gnapKey` yourself.
+No `class_id` is registered, and no browser origin. This client is a server. A re-run that finds the application already in the registry adds the finish URI, the start mode and the scopes, and sets the bearer flag and the display URI. A single-valued field goes through `applications/set`; `applications/add` refuses it. The re-run does not send `gnapKey` again. A new key means a new registration, or setting `gnapKey` yourself.
 
 It also turns on `authn.multipleAccounts`. GNAP's account hint is soft, and a second sign-in in the same browser ends the first provider session unless the realm allows more than one. The test user is `gnap-demo-user`, in the groups `ssf-read` and `ssf-manage`. The password is `GNAP_DEMO_USER_PASSWORD`, or one is generated and printed once. The application is added to the roles `SSF_READ` and `SSF_MANAGE`.
+
+Every run sets one custom claim on the application's GNAP access-token JWT: the name `uid`, the value `${username}`. iya-sts expands that to the directory username when it mints a `jwt-signed` token (and the JWT inside a `jwt-encrypted` one). The demo heading reads that claim. A re-run replaces the row of the same name.
 
 `--idp https://host/realm/acme` targets that realm. Anything else after the host is refused. With no `--idp`, the grant endpoint's origin is used, and a trailing `/gnap` is not part of the realm.

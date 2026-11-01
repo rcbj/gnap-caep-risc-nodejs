@@ -37,6 +37,7 @@ import {
   EVENT, GnapClient, GnapError, SignalsReceiver, trackedFromPerson,
   type Grant, type Person, type SignalEvent,
 } from 'gnap-caep-risc-nodejs';
+import { personWithAccessTokenUid } from './uid-claim.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
@@ -127,8 +128,9 @@ function tell(sid: string, event: string, data: unknown, id?: number): void {
 
 const shortType = (uri: string) => uri.replace(/^.*\/event-type\//, '');
 const familyOf = (uri: string): LoggedEvent['family'] => (/\/caep\//.test(uri) ? 'CAEP' : /\/risc\//.test(uri) ? 'RISC' : 'SSF');
-// The heading and the account list show the directory uid. The subject stays the protocol
-// subject, which is what Shared Signals match.
+// The heading and the account list prefer the access token's `uid` claim. Without that
+// claim they use the user part of the account subject identifier. Shared Signals match
+// the protocol subject, not either of those names.
 const who = (person: Person) => person.uid || person.preferredUsername || person.email || person.name || person.sub;
 
 const LOG_SIZE = 25;
@@ -457,7 +459,8 @@ async function placeSession(oldSetId: string | undefined, person: Person, grant:
   const sid = randomBytes(32).toString('base64url');
   const until = Date.now() + SESSION_MS;
   const accounts = accountsOfSet(oldSetId);
-  const existing = accounts.find((a) => samePerson(a.session.person, person));
+  const shown = personWithAccessTokenUid(person, grant.accessToken);
+  const existing = accounts.find((a) => samePerson(a.session.person, shown));
   const account = existing?.session.account ?? randomBytes(9).toString('base64url');
   if (existing) {
     endSession(existing.sid);
@@ -473,10 +476,10 @@ async function placeSession(oldSetId: string | undefined, person: Person, grant:
     const s = x === sid ? undefined : sessions.get(x);
     if (s) s.setId = setId;
   }
-  sessions.set(sid, { person, grant, expires: until, signals: [], setId, account });
+  sessions.set(sid, { person: shown, grant, expires: until, signals: [], setId, account });
   rememberGrant(grant);
-  await watch(sid, person, until);
-  console.log(`signed in ${who(person)} (${person.sub}); ${order.length} account(s) in this browser`);
+  await watch(sid, shown, until);
+  console.log(`signed in ${who(shown)} (${shown.sub}); ${order.length} account(s) in this browser`);
   const longest = Math.max(...order.map((x) => sessions.get(x)?.expires ?? 0));
   return { account, setCookie: cookie('aset', setId, { maxAge: Math.floor((longest - Date.now()) / 1000) }) };
 }

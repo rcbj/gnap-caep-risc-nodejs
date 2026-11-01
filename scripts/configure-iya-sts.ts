@@ -245,6 +245,16 @@ export function planFor(files: DemoFiles, base: string, testUser: string, keyJso
   const again = applicationFields(files, keyJson, false);
   for (const [attribute, raw] of Object.entries(again)) {
     const values = Array.isArray(raw) ? raw.map(String) : [String(raw)];
+    // A single-valued attribute is refused by applications/add. applications/set
+    // replaces it. The lists (finish URI, interaction start, scope) stay add.
+    if (!Array.isArray(raw)) {
+      calls.push({
+        method: 'POST', path: `${base}/admin-api/applications/set`, when: 'exists',
+        why: `set ${attribute}`,
+        body: { application: files.application, attribute, value: values[0] },
+      });
+      continue;
+    }
     for (const value of values) {
       calls.push({
         method: 'POST', path: `${base}/admin-api/applications/add`, when: 'exists',
@@ -266,6 +276,16 @@ export function planFor(files: DemoFiles, base: string, testUser: string, keyJso
       body: { role, kind: 'application', member: files.application },
     });
   }
+  calls.push({
+    method: 'POST', path: `${base}/admin-api/applications/set-custom-claim`, when: 'always',
+    why: 'put the directory username on the access-token JWT as uid',
+    body: {
+      application: files.application,
+      set: 'gnap_access_token',
+      name: 'uid',
+      value: '${username}',
+    },
+  });
   if (testUser) {
     calls.push({
       method: 'POST', path: `${base}/admin-api/users/create`, when: 'always',
@@ -386,11 +406,12 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     throw new Error(`iya-sts refused to create ${files.application}: ${JSON.stringify(created.body).slice(0, 500)}`);
   }
 
-  for (const call of plan.filter((one) => one.when === 'always' && (one.path.endsWith('/config/set') || one.path.endsWith('/roles/add-member')))) {
+  for (const call of plan.filter((one) => one.when === 'always' && (one.path.endsWith('/config/set') || one.path.endsWith('/roles/add-member') || one.path.endsWith('/applications/set-custom-claim')))) {
     const answered = await api(call.path.slice(`${base}/admin-api`.length), call.body);
     const errors = errorsOf(answered.body).join(' ');
     if (!answered.body.ok && !/already/i.test(errors)) throw new Error(`${call.why}: refused: ${JSON.stringify(answered.body).slice(0, 400)}`);
     if (!answered.body.ok) console.log(`  ${call.why}: already so`);
+    else if (call.path.endsWith('/applications/set-custom-claim')) console.log(`Access-token JWT claim uid is set on ${files.application}.`);
   }
   if (fresh) console.log('authn.multipleAccounts is on, and the Shared Signals roles were granted for the access rights in the file.');
 

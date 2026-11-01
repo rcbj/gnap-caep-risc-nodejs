@@ -74,6 +74,10 @@ describe('configure-iya-sts', () => {
     assert.ok(again.length > 0);
     assert.ok(again.every((line) => !line.includes('gnapKey') && !line.includes('class_id')));
     assert.ok(again.some((line) => line.includes('gnapBearerTokens') && line.includes('FALSE')));
+    const bearer = plan.find((call) => call.when === 'exists' && JSON.stringify(call.body).includes('gnapBearerTokens'));
+    assert.match(bearer?.path ?? '', /\/applications\/set$/);
+    const finish = plan.find((call) => call.when === 'exists' && JSON.stringify(call.body).includes('gnapFinishUri'));
+    assert.match(finish?.path ?? '', /\/applications\/add$/);
     assert.deepEqual(plan.find((call) => call.path.endsWith('/config/set'))?.body, MULTIPLE_ACCOUNTS);
     const roles = plan.filter((call) => call.path.endsWith('/roles/add-member')).map((call) => (call.body as { role: string }).role);
     assert.deepEqual(roles, SSF_ROLES.map((role) => role.role));
@@ -82,6 +86,14 @@ describe('configure-iya-sts', () => {
     assert.deepEqual((user?.body as { attributes: Record<string, string> }).attributes, userAttributes('gnap-demo-user'));
     const groups = plan.filter((call) => call.path.endsWith('/groups/add-member')).map((call) => (call.body as { group: string }).group);
     assert.deepEqual(groups, ['ssf-read', 'ssf-manage']);
+    const uid = plan.find((call) => call.path.endsWith('/applications/set-custom-claim'));
+    assert.equal(uid?.when, 'always');
+    assert.deepEqual(uid?.body, {
+      application: 'gnap-caep-risc-demo',
+      set: 'gnap_access_token',
+      name: 'uid',
+      value: '${username}',
+    });
     assert.equal(planFor(files, 'https://localhost:8081', '', keyJson).some((call) => call.path.endsWith('/users/create')), false);
     assert.equal(adminTls().rejectUnauthorized, false);
   });
