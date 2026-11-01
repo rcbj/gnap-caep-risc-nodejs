@@ -23,6 +23,7 @@
 // does not contact the authorization server. One poll stream, authenticated by a GNAP access token and
 // the same key proof (mutual TLS in this demo). The latest grant is kept for that poll after the
 // browser session that obtained it has signed out. An ending event ends the matching local sessions.
+// `signals: false` does not start the receiver and does not contact a transmitter.
 //
 // Two cookies. `gpending` names the outstanding grants (their ids only; the continuation stays in this
 // process), HMAC-signed, scoped to /callback, SameSite=Lax. It is not Secure on an http finish URI,
@@ -48,14 +49,19 @@ const SESSION_MS = 8 * 3600_000;
 const MAX_SESSIONS = 10_000;
 const STYLES = readFileSync(resolve(here, 'public/styles.css'));
 const APP_JS = readFileSync(resolve(here, 'public/app.js'));
-const SSF = (() => {
+const loaded = (() => {
   try {
-    const raw = JSON.parse(readFileSync(CONFIG, 'utf8')) as { ssf?: { transmitter?: string; pollIntervalMs?: number } };
-    return raw.ssf?.transmitter ? raw.ssf : undefined;
+    const raw = JSON.parse(readFileSync(CONFIG, 'utf8')) as {
+      signals?: unknown;
+      ssf?: { transmitter?: string; pollIntervalMs?: number };
+    };
+    if (raw.signals === false) return { signalsOff: true, ssf: undefined };
+    return { signalsOff: false, ssf: raw.ssf?.transmitter ? raw.ssf : undefined };
   } catch {
-    return undefined;
+    return { signalsOff: false, ssf: undefined };
   }
 })();
+const SSF = loaded.ssf;
 
 // Loaded on first use. The key is read and nothing is discovered, so the home page can render
 // before the authorization server is reachable. A loopback finish URI follows the port this process
@@ -158,7 +164,11 @@ function logFor(sid: string, entry: LoggedEvent): void {
 
 let receiver: SignalsReceiver | undefined;
 let ssfGrant: Grant | undefined;
-let receiverState = SSF ? 'waiting for the first sign-in' : 'not configured (no ssf block in the configuration file)';
+let receiverState = loaded.signalsOff
+  ? 'signals are off'
+  : SSF
+    ? 'waiting for the first sign-in'
+    : 'not configured (no ssf block in the configuration file)';
 
 function proofPhrase(gnap: GnapClient | undefined): string {
   const proof = gnap?.security.keyProof;

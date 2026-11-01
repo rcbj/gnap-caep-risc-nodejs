@@ -27,8 +27,13 @@ export interface GnapConfigFile {
   /** Sent as `client.class_id` only when set. The demo does not set it. An unregistered instance's identifier. */
   classId?: string;
   display?: { name?: string; uri?: string };
-  /** Access rights, as strings or objects. Default `ssf.read` and `ssf.manage`. */
+  /** Access rights, as strings or objects. Default `ssf.read` and `ssf.manage`. `signals: false` removes those two. */
   access?: unknown[];
+  /**
+   * Receive CAEP and RISC. Omitted is the same as true. `false` removes `ssf.read` and `ssf.manage`,
+   * does not fill `ssf`, and does not contact a transmitter.
+   */
+  signals?: boolean;
   subIdFormats?: string[];
   assertionFormats?: string[];
   /** `mtls`, `httpsig`, or `jwsd`. Default `mtls` when `certificate` is set, otherwise `httpsig`. */
@@ -74,6 +79,8 @@ export interface ResolvedConfig {
   classId?: string;
   display?: { name?: string; uri?: string };
   access: unknown[];
+  /** Present only when CAEP and RISC are off. Callers test `config.signals !== false`. */
+  signals?: false;
   subIdFormats: string[];
   assertionFormats: string[];
   key: ClientKey;
@@ -139,6 +146,16 @@ export function isLoopback(url: URL): boolean {
   return url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]';
 }
 
+const SSF_RIGHTS = ['ssf.read', 'ssf.manage'] as const;
+
+/** A trimmed string right, or an object whose `type` is exactly `ssf.read` or `ssf.manage`. */
+function isSsfAccessRight(right: unknown): boolean {
+  if (typeof right === 'string') return (SSF_RIGHTS as readonly string[]).includes(right.trim());
+  if (!right || typeof right !== 'object' || Array.isArray(right)) return false;
+  const type = (right as { type?: unknown }).type;
+  return type === 'ssf.read' || type === 'ssf.manage';
+}
+
 function checkUrl(value: string, name: string, allowHttp: boolean): string {
   let url: URL;
   try {
@@ -157,6 +174,10 @@ function checkUrl(value: string, name: string, allowHttp: boolean): string {
  */
 export function resolveConfig(raw: unknown, baseDir: string): ResolvedConfig {
   const doc = asObject(raw);
+  if (doc.signals !== undefined && typeof doc.signals !== 'boolean') {
+    throw new GnapError('config', 'signals must be true or false');
+  }
+  const signalsOff = doc.signals === false;
   const application = String(doc.application ?? '').trim();
   if (!application) throw new GnapError('config', 'application is required: the registered GNAP client');
   const grantRaw = String(doc.grantEndpoint ?? '').trim();
@@ -200,16 +221,24 @@ export function resolveConfig(raw: unknown, baseDir: string): ResolvedConfig {
     throw new GnapError('config', 'interactionStart must name at least one mode');
   }
 
-  const access = doc.access ?? ['ssf.read', 'ssf.manage'];
-  if (!Array.isArray(access) || !access.length) throw new GnapError('config', 'access must list at least one right');
+  const requested = doc.access ?? ['ssf.read', 'ssf.manage'];
+  if (!Array.isArray(requested)) throw new GnapError('config', 'access must list at least one right');
+  const access = signalsOff ? requested.filter((right) => !isSsfAccessRight(right)) : requested;
+  if (!access.length) {
+    throw new GnapError('config', signalsOff
+      ? 'signals is false and access has no rights left after ssf.read and ssf.manage were removed; the caller must name a right this authorization server grants'
+      : 'access must list at least one right');
+  }
 
   const tlsCa = readTrust(doc.tlsCa, baseDir);
 
-  const transmitter = (doc.ssf?.transmitter ?? doc.transmitterIssuer)?.replace(/\/+$/, '');
   let ssf: ResolvedConfig['ssf'];
-  if (transmitter) {
-    if (!/^https?:\/\//.test(transmitter)) throw new GnapError('config', 'ssf.transmitter must be an http(s) URL');
-    ssf = { transmitter, ...(doc.ssf?.pollIntervalMs ? { pollIntervalMs: doc.ssf.pollIntervalMs } : {}) };
+  if (!signalsOff) {
+    const transmitter = (doc.ssf?.transmitter ?? doc.transmitterIssuer)?.replace(/\/+$/, '');
+    if (transmitter) {
+      if (!/^https?:\/\//.test(transmitter)) throw new GnapError('config', 'ssf.transmitter must be an http(s) URL');
+      ssf = { transmitter, ...(doc.ssf?.pollIntervalMs ? { pollIntervalMs: doc.ssf.pollIntervalMs } : {}) };
+    }
   }
 
   const display = doc.display && (doc.display.name || doc.display.uri)
@@ -223,6 +252,7 @@ export function resolveConfig(raw: unknown, baseDir: string): ResolvedConfig {
     ...(doc.classId ? { classId: doc.classId } : {}),
     ...(display ? { display } : {}),
     access,
+    ...(signalsOff ? { signals: false as const } : {}),
     subIdFormats: doc.subIdFormats ?? ['iss_sub', 'account', 'opaque'],
     assertionFormats: doc.assertionFormats ?? ['id_token'],
     key,

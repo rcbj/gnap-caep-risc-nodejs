@@ -21,11 +21,12 @@ The walkthrough is [the server-side guide](docs/guide.md). Events are [Handling 
 | `grantEndpoint` | Required. `https://idp.example/gnap`. `http` only with `allowInsecure`. |
 | `application` | Required. The registered application's identifier. Not sent as `class_id`. Also accepted as an ID token audience. |
 | `privateKey` | Required. PEM PKCS#8, `file:path`, `env:NAME`, or a path. |
-| `transmitterIssuer` | gnap-caep-js's name for the Shared Signals issuer. `ssf.transmitter` wins when both are set. |
+| `transmitterIssuer` | gnap-caep-js's name for the Shared Signals issuer. `ssf.transmitter` wins when both are set. Ignored when `signals` is false. |
 | `idTokenIssuer` | Issuer of subject ID tokens. Defaults to the grant endpoint's origin. |
 | `classId` | Optional. Sent as `client.class_id` only when set. The demo does not set it. |
 | `display` | `{ name, uri }`, sent with the key on the first grant. |
-| `access` | Rights. Default `ssf.read` and `ssf.manage`. |
+| `access` | Rights. Default `ssf.read` and `ssf.manage`. `signals: false` removes those two. |
+| `signals` | CAEP and RISC. Default on (omitted or `true`). `false` turns them off. |
 | `subIdFormats` | Default `iss_sub`, `account`, `opaque`. Filtered to what the grant server advertises. |
 | `assertionFormats` | Default `id_token`. |
 | `keyProof` | `mtls`, `httpsig`, or `jwsd`. Default `mtls` when `certificate` is set, otherwise `httpsig`. |
@@ -41,8 +42,10 @@ The walkthrough is [the server-side guide](docs/guide.md). Events are [Handling 
 | `clockToleranceSec` | ID token skew. Default 30. |
 | `maxWaitSec` | The longest one continuation may be delayed by `continue.wait` or `too_fast`. Default 30. |
 | `transactionTtlSec` | How long a pending interaction is kept. Default 600. |
-| `ssf.transmitter` | The transmitter's issuer. |
+| `ssf.transmitter` | The transmitter's issuer. Not used when `signals` is false. |
 | `ssf.pollIntervalMs` | Pause between polls when nothing else is waiting. The receiver's own default is 5000. |
+
+`signals` defaults to on. Omitted is the same as `true`, and the resolved configuration leaves the flag out. `signals: false` turns CAEP and RISC off. It drops the rights `ssf.read` and `ssf.manage` (a string is trimmed first; an object is dropped only when `type` is exactly one of those two) and does not fill `ssf`, so the client does not require transmitter metadata and does not fetch `/.well-known/ssf-configuration`. The grant's subject request is unchanged. If those two were the only rights, set `access` to a right the authorization server grants. The resolved configuration includes `signals: false` only in that case. Callers test `config.signals !== false`.
 
 `GnapClient.fromFile(path)` reads the file and the key. It does not discover. `GnapClient.resolve(object, baseDir)` and `GnapClient.create(resolved)` build one from an object. Relative paths start at `baseDir`, which for a file is the file's directory.
 
@@ -70,7 +73,7 @@ An `id_token` assertion is verified against the issuer's JWKS: `iss` equals `idT
 
 ## Shared Signals
 
-`SignalsReceiver` polls one stream. `headers` receives `{ method, url, body }` so the proof covers the body. `track` / `untrack` maintain the session index. `on(type, handler)` and `on('*')` see each verified event. `endOn` defaults to session-revoked, account-disabled, account-purged, credential-compromise, and sessions-revoked. `verify(state)` asks for a verification event.
+With `signals` left on, `SignalsReceiver` polls one stream. `signals: false` does not start it and does not contact a transmitter. `SignalsReceiver` stays exported for a caller that builds one itself. `headers` receives `{ method, url, body }` so the proof covers the body. `track` / `untrack` maintain the session index. `on(type, handler)` and `on('*')` see each verified event. `endOn` defaults to session-revoked, account-disabled, account-purged, credential-compromise, and sessions-revoked. `verify(state)` asks for a verification event.
 
 `EVENT`, `CAEP_EVENTS`, `RISC_EVENTS`, `DEFAULT_EVENTS_REQUESTED`, and `DEFAULT_ENDING_EVENTS` are the event URIs. `MemorySessionIndex` is the default index. `trackedFromPerson` builds a row from a GNAP subject.
 

@@ -11,7 +11,7 @@ A **server-side GNAP client** ([RFC 9635](https://www.rfc-editor.org/rfc/rfc9635
 - **Key-bound tokens.** A token flagged `bearer` is refused. The continuation and the management token never go to the browser.
 - **Interaction finish** by redirect, with the hash from [RFC 9635 section 4.5.3](https://www.rfc-editor.org/rfc/rfc9635#section-4.5.3), or by push. The hash is checked in this process, and only for a grant this browser started.
 - **Subject information**, including an `id_token` assertion checked against the issuer's JWKS. The audience may be the instance id or the application's identifier.
-- **CAEP and RISC** on one Shared Signals poll stream. The stream is authenticated with a GNAP access token and the same key proof.
+- **CAEP and RISC** on one Shared Signals poll stream, unless `signals` is false. The default is on, so an existing configuration keeps receiving events. The stream is authenticated with a GNAP access token and the same key proof. `signals: false` drops `ssf.read` and `ssf.manage`, does not contact a transmitter, and does not start the receiver. If those were the only rights, set `access` to a right the authorization server grants.
 
 It is TypeScript and works from JavaScript, needs no web framework, and has no runtime dependency. It is built and tested against [iya-sts](https://rcbj.github.io/iya-sts/). How a GNAP application is registered there is [GNAP](https://rcbj.github.io/iya-sts/gnap.html) and [Configure a GNAP application](https://rcbj.github.io/iya-sts/configure-gnap.html).
 

@@ -31,6 +31,8 @@ The names that [gnap-caep-js](https://github.com/rcbj/gnap-caep-js) already uses
 }
 ```
 
+`signals` defaults to on. Leave it out, or set `true`, and the client keeps receiving CAEP and RISC events: access defaults to `ssf.read` and `ssf.manage`, and `ssf` is filled from `ssf.transmitter` or `transmitterIssuer`. Set `signals` to `false` when the authorization server does not implement Shared Signals. That drops those two rights, does not fill `ssf`, and does not contact a transmitter, including `/.well-known/ssf-configuration`. The subject request is unchanged. If `access` was only those two rights, set it to a right the authorization server grants. The resolved configuration omits `signals` when it is on and includes `signals: false` only when it is off.
+
 `keyProof` is `mtls`, `httpsig`, or `jwsd`. When it is omitted, a certificate selects mutual TLS and anything else selects HTTP message signatures. `tlsCa` is the CA trust chain for the authorization server's TLS listener: a PEM bundle, `file:path`, `env:NAME`, or a path. iya-sts publishes that bundle at `GET /tls/server-certificate`. A missing file is ignored, so the process can still serve a page before the file exists.
 
 For iya-sts, [`scripts/configure-iya-sts.ts`](../../../scripts/configure-iya-sts.ts) registers the application and saves the listener CA trust chain into the file `tlsCa` names. The demo container refreshes that file when it starts.
