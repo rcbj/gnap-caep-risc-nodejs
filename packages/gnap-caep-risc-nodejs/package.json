@@ -1,0 +1,63 @@
+{
+  "name": "gnap-caep-risc-nodejs",
+  "version": "0.1.0",
+  "description": "Server-side GNAP (RFC 9635) client for traditional Node.js web applications: a registered key proved by mutual TLS, HTTP message signatures or detached JWS, key-bound tokens, redirect and push interaction finish, and a CAEP and RISC Shared Signals receiver.",
+  "homepage": "https://rcbj.github.io/gnap-caep-risc-nodejs/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rcbj/gnap-caep-risc-nodejs.git",
+    "directory": "packages/gnap-caep-risc-nodejs"
+  },
+  "bugs": {
+    "url": "https://github.com/rcbj/gnap-caep-risc-nodejs/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "gnap-caep-risc-nodejs": "./dist/cli.js"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "docs",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test test/*.test.ts",
+    "prepack": "npm run build"
+  },
+  "keywords": [
+    "gnap",
+    "rfc9635",
+    "httpsig",
+    "mtls",
+    "jwsd",
+    "caep",
+    "risc",
+    "secevent",
+    "shared-signals",
+    "ssf"
+  ],
+  "license": "BUSL-1.1",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "7.0.2"
+  },
+  "author": "Iya CyberSecurity Solutions, LLC",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

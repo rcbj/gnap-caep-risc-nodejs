@@ -1,0 +1,14 @@
+{
+  "name": "gnap-caep-risc-nodejs-demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A traditional server-rendered web application that signs people in with GNAP through gnap-caep-risc-nodejs.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.ts"
+  },
+  "dependencies": {
+    "gnap-caep-risc-nodejs": "*"
+  },
+  "license": "BUSL-1.1"
+}

@@ -1,0 +1,19 @@
+# Jekyll configuration for the gnap-caep-risc-nodejs documentation site, laid out like the other
+# protocol libraries: the minima theme GitHub Pages ships, with a sidebar from _data/navigation.yml.
+# ../.github/workflows/pages.yml builds it. The guide and the signals page are the package's own
+# files (packages/gnap-caep-risc-nodejs/docs/), copied in by the workflow.
+title: gnap-caep-risc-nodejs
+tagline: documentation
+description: >-
+  A server-side GNAP client for traditional Node.js web applications: a registered key,
+  key-bound tokens, and a CAEP and RISC Shared Signals receiver.
+theme: minima
+show_excerpts: false
+baseurl: "/gnap-caep-risc-nodejs"
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+plugins:
+  - jekyll-relative-links

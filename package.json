@@ -1,0 +1,24 @@
+{
+  "name": "gnap-caep-risc-nodejs-monorepo",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/gnap-caep-risc-nodejs",
+    "demo"
+  ],
+  "scripts": {
+    "build": "npm run build -w packages/gnap-caep-risc-nodejs",
+    "test": "npm test -w packages/gnap-caep-risc-nodejs && node --test scripts/*.test.mjs scripts/*.test.ts",
+    "start": "node demo/server.ts",
+    "configure-iya-sts": "node scripts/configure-iya-sts.ts",
+    "generate-key": "node packages/gnap-caep-risc-nodejs/src/cli.ts generate-key",
+    "version:print": "node scripts/version.mjs",
+    "version:check": "node scripts/version.mjs --check-manifests",
+    "version:sync": "node scripts/version.mjs --sync-manifests"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "license": "BUSL-1.1",
+  "author": "Iya CyberSecurity Solutions, LLC"
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "gnap-caep-risc-nodejs",
+  "entryPoints": ["../../packages/gnap-caep-risc-nodejs/src/index.ts"],
+  "tsconfig": "tsconfig.json",
+  "out": "../../_site_api/api",
+  "readme": "none",
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "sort": ["kind", "alphabetical"],
+  "githubPages": false,
+  "navigationLinks": {
+    "Documentation": "https://rcbj.github.io/gnap-caep-risc-nodejs/",
+    "GitHub": "https://github.com/rcbj/gnap-caep-risc-nodejs"
+  }
+}

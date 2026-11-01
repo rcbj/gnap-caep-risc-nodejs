@@ -1,0 +1,8 @@
+node_modules/
+packages/gnap-caep-risc-nodejs/dist/
+_site_api/
+_site_src/
+_site/
+# The demo's private key, certificate, and the identity provider's TLS chain.
+demo/generated/
+*.tgz
