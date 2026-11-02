@@ -42,6 +42,10 @@ interface Behavior {
   /** When set, the subject identifier's sub differs from the ID token. */
   issSub?: string;
   omitToken: boolean;
+  /** When set, the continuation URI the grant response names. */
+  continueUri?: string;
+  /** When set, the continuation URI a too_fast error names. */
+  tooFastUri?: string;
 }
 
 function finishHash(clientNonce: string, interactRef: string, grantEndpoint: string): string {
@@ -162,7 +166,7 @@ describe('the GNAP client', { concurrency: 1 }, () => {
           if (req.headers.signature) verifyHttpsig(req, raw, target);
           if (req.headers['detached-jws']) verifyJwsd(req, raw, target);
           if (url.pathname === '/gnap' && req.method === 'POST') {
-            const cont = behavior.foreign ? 'https://evil.example/continue' : `${base}/continue`;
+            const cont = behavior.continueUri ?? (behavior.foreign ? 'https://evil.example/continue' : `${base}/continue`);
             return send(200, {
               instance_id: 'instance-1',
               interact: { redirect: `${base}/interact/1`, finish: 'server-nonce' },
@@ -173,7 +177,7 @@ describe('the GNAP client', { concurrency: 1 }, () => {
             assert.equal(req.headers.authorization, 'GNAP cont-token');
             if (behavior.tooFast && !tooFastSent) {
               tooFastSent = true;
-              return send(400, { error: 'too_fast', continue: { uri: `${base}/continue`, wait: 0, access_token: { value: 'cont-token' } } });
+              return send(400, { error: 'too_fast', continue: { uri: behavior.tooFastUri ?? `${base}/continue`, wait: 0, access_token: { value: 'cont-token' } } });
             }
             if (behavior.omitToken) return send(200, { instance_id: 'instance-1' });
             const token = idToken(base, behavior.aud, behavior.sub);
@@ -374,6 +378,49 @@ describe('the GNAP client', { concurrency: 1 }, () => {
     assert.equal(fresh.accessToken, 'access-2');
     const held = await gnap.ensureFresh({ ...fresh, expiresAt: Date.now() + 3_600_000 });
     assert.equal(held.accessToken, 'access-2');
+  });
+
+  it('refuses a continuation URI that carries user information on the grant endpoint origin', async () => {
+    seen = [];
+    behavior.continueUri = `${base.replace('https://', 'https://user:secret@')}/continue`;
+    try {
+      const gnap = client('httpsig');
+      await assert.rejects(() => gnap.requestGrant(), (err: unknown) => err instanceof GnapError
+        && /must not carry user information/.test(err.message) && !err.message.includes('secret'));
+      assert.equal(seen.filter((call) => call.url === '/continue').length, 0);
+    } finally {
+      delete behavior.continueUri;
+    }
+  });
+
+  it('does not follow a too_fast continuation to another origin', async () => {
+    seen = [];
+    tooFastSent = false;
+    behavior.tooFast = true;
+    behavior.tooFastUri = 'https://evil.example/continue';
+    try {
+      const gnap = client('httpsig');
+      const { result, request } = await started(gnap);
+      const hash = finishHash(request.interact.finish.nonce, 'ref-f', `${base}/gnap`);
+      await assert.rejects(
+        () => gnap.finishRedirect({ hash, interact_ref: 'ref-f' }, { allowedIds: [result.pending.id] }),
+        (err: unknown) => err instanceof GnapError && /not on the grant endpoint/.test(err.message),
+      );
+      assert.equal(tooFastSent, true);
+      assert.equal(seen.filter((call) => call.url === '/continue').length, 1);
+    } finally {
+      behavior.tooFast = false;
+      delete behavior.tooFastUri;
+    }
+  });
+
+  it('checks the TLS certificate by default: without tlsCa a self-signed grant server is refused', async () => {
+    seen = [];
+    const gnap = client('httpsig', { tlsCa: undefined });
+    assert.equal(Object.hasOwn(gnap.tls(), 'rejectUnauthorized'), false);
+    assert.equal(Object.hasOwn(gnap.tls(), 'ca'), false);
+    await assert.rejects(() => gnap.requestGrant(), (err: unknown) => err instanceof GnapError && /certificate/i.test(err.message));
+    assert.equal(seen.length, 0);
   });
 });
 
