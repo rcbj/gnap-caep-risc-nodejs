@@ -62,6 +62,12 @@ describe('the GNAP client', { concurrency: 1 }, () => {
   const behavior: Behavior = { foreign: false, bearer: false, tooFast: false, aud: 'instance-1', sub: 'user-1', omitToken: false };
   let tooFastSent = false;
   let server: https.Server;
+  // A second listener for the mutual TLS proof. It asks for a client certificate and refuses the
+  // handshake unless the certificate is the one the client registered, which is how a GNAP
+  // authorization server binds a self-signed key (RFC 9635 7.3.3). The first listener asks for no
+  // certificate, because the httpsig and jwsd proofs present none.
+  let mtlsServer: https.Server;
+  let mtlsBase = '';
 
   function verifyHttpsig(req: IncomingMessage, raw: string, target: string): void {
     const input = String(req.headers['signature-input'] ?? '');
@@ -71,7 +77,7 @@ describe('the GNAP client', { concurrency: 1 }, () => {
     const components = [...match[1]!.matchAll(/"([^"]+)"/g)].map((found) => found[1]!);
     const serialised = `(${components.map((c) => `"${c}"`).join(' ')})${match[2]}`;
     assert.match(match[2]!, /tag="gnap"/);
-    assert.match(match[2]!, new RegExp(`keyid="${kid}"`));
+    assert.ok(match[2]!.includes(`keyid="${kid}"`), `keyid ${kid} in ${match[2]}`);
     const headers: Record<string, string> = {};
     for (const [name, value] of Object.entries(req.headers)) if (typeof value === 'string') headers[name] = value;
     const lines = components.map((component) => {
@@ -120,96 +126,103 @@ describe('the GNAP client', { concurrency: 1 }, () => {
     }
   }
 
+  function handle(req: IncomingMessage, res: import('node:http').ServerResponse): void {
+    const chunks: Buffer[] = [];
+    // Each listener answers with its own origin, so a client on either one stays on it.
+    const base = `https://127.0.0.1:${req.socket.localPort}`;
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', () => {
+      const raw = Buffer.concat(chunks).toString('utf8');
+      const url = new URL(req.url ?? '/', base);
+      const target = `${base}${url.pathname}`;
+      const peer = req.socket && 'getPeerCertificate' in req.socket ? (req.socket as import('node:tls').TLSSocket).getPeerCertificate() : undefined;
+      seen.push({
+        method: req.method ?? '',
+        url: url.pathname,
+        body: raw,
+        authorization: String(req.headers.authorization ?? ''),
+        signature: String(req.headers.signature ?? ''),
+        detached: String(req.headers['detached-jws'] ?? ''),
+        cert: peer?.raw ? new X509Certificate(peer.raw).fingerprint256 : '',
+      });
+      const send = (status: number, body?: unknown) => {
+        res.writeHead(status, { 'content-type': 'application/json' });
+        res.end(body === undefined ? '' : JSON.stringify(body));
+      };
+      try {
+        if (req.method === 'OPTIONS' && url.pathname === '/gnap') {
+          return send(200, {
+            grant_request_endpoint: `${base}/gnap`,
+            key_proofs_supported: ['httpsig', 'jwsd', 'mtls'],
+            interaction_start_modes_supported: ['redirect'],
+            interaction_finish_methods_supported: ['redirect', 'push'],
+            sub_id_formats_supported: ['iss_sub', 'opaque'],
+            assertion_formats_supported: ['id_token'],
+          });
+        }
+        if (url.pathname === '/.well-known/openid-configuration') {
+          return send(200, { issuer: base, jwks_uri: `${base}/jwks` });
+        }
+        if (url.pathname === '/jwks') return send(200, { keys: [idJwk] });
+        if (raw && url.pathname === '/gnap') rememberKey(raw);
+        if (req.headers.signature) verifyHttpsig(req, raw, target);
+        if (req.headers['detached-jws']) verifyJwsd(req, raw, target);
+        if (url.pathname === '/gnap' && req.method === 'POST') {
+          const cont = behavior.continueUri ?? (behavior.foreign ? 'https://evil.example/continue' : `${base}/continue`);
+          return send(200, {
+            instance_id: 'instance-1',
+            interact: { redirect: `${base}/interact/1`, finish: 'server-nonce' },
+            continue: { uri: cont, wait: 0, access_token: { value: 'cont-token' } },
+          });
+        }
+        if (url.pathname === '/continue' && req.method === 'POST') {
+          assert.equal(req.headers.authorization, 'GNAP cont-token');
+          if (behavior.tooFast && !tooFastSent) {
+            tooFastSent = true;
+            return send(400, { error: 'too_fast', continue: { uri: behavior.tooFastUri ?? `${base}/continue`, wait: 0, access_token: { value: 'cont-token' } } });
+          }
+          if (behavior.omitToken) return send(200, { instance_id: 'instance-1' });
+          const token = idToken(base, behavior.aud, behavior.sub);
+          return send(200, {
+            instance_id: 'instance-1',
+            access_token: {
+              value: 'access-1',
+              access: ['ssf.read', 'ssf.manage'],
+              expires_in: 3600,
+              ...(behavior.bearer ? { flags: ['bearer'] } : {}),
+              manage: { uri: `${base}/token/grant-9`, access_token: { value: 'manage-1' } },
+            },
+            continue: { uri: `${base}/continue/grant-9`, access_token: { value: 'cont-next' } },
+            subject: {
+              sub_ids: [{ format: 'iss_sub', iss: base, sub: behavior.issSub ?? behavior.sub }],
+              assertions: [{ format: 'id_token', value: token }],
+            },
+          });
+        }
+        if (url.pathname === '/token/grant-9' && req.method === 'POST') {
+          assert.equal(req.headers.authorization, 'GNAP manage-1');
+          return send(200, { access_token: { value: 'access-2', expires_in: 3600, manage: { uri: `${base}/token/grant-9`, access_token: { value: 'manage-2' } } } });
+        }
+        if (req.method === 'DELETE') return send(204);
+        return send(404, { error: 'not_found' });
+      } catch (err) {
+        send(401, { error: 'invalid_client', error_description: (err as Error).message });
+      }
+    });
+  }
+
   async function listen(): Promise<void> {
-    server = https.createServer({
+    server = https.createServer({ key: serverKey.privateKeyPem, cert: serverKey.certificatePem }, handle);
+    mtlsServer = https.createServer({
       key: serverKey.privateKeyPem,
       cert: serverKey.certificatePem,
       requestCert: true,
-      rejectUnauthorized: false,
-    }, (req, res) => {
-      const chunks: Buffer[] = [];
-      req.on('data', (chunk: Buffer) => chunks.push(chunk));
-      req.on('end', () => {
-        const raw = Buffer.concat(chunks).toString('utf8');
-        const url = new URL(req.url ?? '/', base);
-        const target = `${base}${url.pathname}`;
-        const peer = req.socket && 'getPeerCertificate' in req.socket ? (req.socket as import('node:tls').TLSSocket).getPeerCertificate() : undefined;
-        seen.push({
-          method: req.method ?? '',
-          url: url.pathname,
-          body: raw,
-          authorization: String(req.headers.authorization ?? ''),
-          signature: String(req.headers.signature ?? ''),
-          detached: String(req.headers['detached-jws'] ?? ''),
-          cert: peer?.raw ? new X509Certificate(peer.raw).fingerprint256 : '',
-        });
-        const send = (status: number, body?: unknown) => {
-          res.writeHead(status, { 'content-type': 'application/json' });
-          res.end(body === undefined ? '' : JSON.stringify(body));
-        };
-        try {
-          if (req.method === 'OPTIONS' && url.pathname === '/gnap') {
-            return send(200, {
-              grant_request_endpoint: `${base}/gnap`,
-              key_proofs_supported: ['httpsig', 'jwsd', 'mtls'],
-              interaction_start_modes_supported: ['redirect'],
-              interaction_finish_methods_supported: ['redirect', 'push'],
-              sub_id_formats_supported: ['iss_sub', 'opaque'],
-              assertion_formats_supported: ['id_token'],
-            });
-          }
-          if (url.pathname === '/.well-known/openid-configuration') {
-            return send(200, { issuer: base, jwks_uri: `${base}/jwks` });
-          }
-          if (url.pathname === '/jwks') return send(200, { keys: [idJwk] });
-          if (raw && url.pathname === '/gnap') rememberKey(raw);
-          if (req.headers.signature) verifyHttpsig(req, raw, target);
-          if (req.headers['detached-jws']) verifyJwsd(req, raw, target);
-          if (url.pathname === '/gnap' && req.method === 'POST') {
-            const cont = behavior.continueUri ?? (behavior.foreign ? 'https://evil.example/continue' : `${base}/continue`);
-            return send(200, {
-              instance_id: 'instance-1',
-              interact: { redirect: `${base}/interact/1`, finish: 'server-nonce' },
-              continue: { uri: cont, wait: 0, access_token: { value: 'cont-token' } },
-            });
-          }
-          if (url.pathname === '/continue' && req.method === 'POST') {
-            assert.equal(req.headers.authorization, 'GNAP cont-token');
-            if (behavior.tooFast && !tooFastSent) {
-              tooFastSent = true;
-              return send(400, { error: 'too_fast', continue: { uri: behavior.tooFastUri ?? `${base}/continue`, wait: 0, access_token: { value: 'cont-token' } } });
-            }
-            if (behavior.omitToken) return send(200, { instance_id: 'instance-1' });
-            const token = idToken(base, behavior.aud, behavior.sub);
-            return send(200, {
-              instance_id: 'instance-1',
-              access_token: {
-                value: 'access-1',
-                access: ['ssf.read', 'ssf.manage'],
-                expires_in: 3600,
-                ...(behavior.bearer ? { flags: ['bearer'] } : {}),
-                manage: { uri: `${base}/token/grant-9`, access_token: { value: 'manage-1' } },
-              },
-              continue: { uri: `${base}/continue/grant-9`, access_token: { value: 'cont-next' } },
-              subject: {
-                sub_ids: [{ format: 'iss_sub', iss: base, sub: behavior.issSub ?? behavior.sub }],
-                assertions: [{ format: 'id_token', value: token }],
-              },
-            });
-          }
-          if (url.pathname === '/token/grant-9' && req.method === 'POST') {
-            assert.equal(req.headers.authorization, 'GNAP manage-1');
-            return send(200, { access_token: { value: 'access-2', expires_in: 3600, manage: { uri: `${base}/token/grant-9`, access_token: { value: 'manage-2' } } } });
-          }
-          if (req.method === 'DELETE') return send(204);
-          return send(404, { error: 'not_found' });
-        } catch (err) {
-          send(401, { error: 'invalid_client', error_description: (err as Error).message });
-        }
-      });
-    });
+      ca: clientKey.certificatePem,
+    }, handle);
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    await new Promise<void>((resolve) => mtlsServer.listen(0, '127.0.0.1', resolve));
     base = `https://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    mtlsBase = `https://127.0.0.1:${(mtlsServer.address() as AddressInfo).port}`;
   }
 
   function client(proof: KeyProof, extra: Record<string, unknown> = {}): GnapClient {
@@ -243,7 +256,10 @@ describe('the GNAP client', { concurrency: 1 }, () => {
   }
 
   before(listen);
-  after(() => new Promise<void>((resolve) => server.close(() => resolve())));
+  after(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) => mtlsServer.close(() => resolve()));
+  });
 
   it('refuses a bearer token, a front-channel token, a foreign continuation, and a hash that is not ours', async () => {
     assert.equal(interactionHash('abc', 'def', 'xyz', 'https://as.example/gnap'), '2o3b9NeEcvp0At5d-71yCgybP45eTGm1_pTNMmjv_V0');
@@ -320,18 +336,30 @@ describe('the GNAP client', { concurrency: 1 }, () => {
     assert.equal(seen.find((call) => call.url === '/continue')!.signature, '');
 
     seen = [];
-    const mtls = client('mtls');
+    const mtls = client('mtls', { grantEndpoint: `${mtlsBase}/gnap`, idTokenIssuer: mtlsBase });
     const second = await started(mtls);
     assert.equal(second.request.client.key?.proof, 'mtls');
     assert.equal(seen.find((call) => call.url === '/gnap')!.cert, clientKey.certificate.fingerprint256);
     assert.equal(seen.find((call) => call.url === '/gnap')!.signature, '');
     assert.equal(seen.find((call) => call.url === '/gnap')!.detached, '');
-    const hash2 = finishHash(second.request.interact.finish.nonce, 'ref-m', `${base}/gnap`);
+    const hash2 = finishHash(second.request.interact.finish.nonce, 'ref-m', `${mtlsBase}/gnap`);
     const finished = await mtls.finishPush({ hash: hash2, interact_ref: 'ref-m' });
     assert.equal(finished.grant.accessToken, 'access-1');
-    const answer = await mtls.call(finished.grant, `${base}/jwks`);
+    const answer = await mtls.call(finished.grant, `${mtlsBase}/jwks`);
     assert.equal(answer.status, 200);
     assert.match(seen.at(-1)!.authorization, /^GNAP access-1$/);
+
+    // The mutual TLS listener refuses the handshake for a certificate the client did not register.
+    const stranger = createSelfSignedKeyPair({ commonName: 'stranger' });
+    const refused = client('mtls', {
+      grantEndpoint: `${mtlsBase}/gnap`,
+      idTokenIssuer: mtlsBase,
+      privateKey: stranger.privateKeyPem,
+      certificate: stranger.certificatePem,
+    });
+    seen = [];
+    await assert.rejects(() => refused.requestGrant());
+    assert.equal(seen.length, 0);
   });
 
   it('refuses a bearer downgrade, a bad audience, and a subject that does not match', async () => {
