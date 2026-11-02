@@ -14,7 +14,7 @@ Node.js 22.18 or later. The package engines field says `>=22.18.0`. Continuous i
 |---|---|
 | `packages/gnap-caep-risc-nodejs` | The library published to npm as `gnap-caep-risc-nodejs`. Source is `src/` (`client.ts`, `config.ts`, `keys.ts`, `httpsig.ts`, `jwsd.ts`, `x509.ts`, `ssf/`). Tests are `test/`. `npm run build` writes `dist/`. |
 | `demo` | The server-rendered demo. `demo/server.ts` and `demo/public/`. Config is `demo/gnap.json`. |
-| `scripts` | `configure-iya-sts.ts`, the install script, registers the client on iya-sts and writes the listener CA trust chain to the file `tlsCa` names. `trust-chain.mjs` holds `saveTrustChain()` and refreshes that file. `trust-chain.test.ts`: the chain is written whole to `tlsCa`'s path, and the library trusts a grant server through it and still checks its host name. `live_iya_sts.py` signs the demo in to a fresh iya-sts and checks two Shared Signals events. `redirects.mjs` rewrites a loopback URL onto `PORT`. `version.mjs` stamps the published version. |
+| `scripts` | `configure-iya-sts.ts`, the install script, registers the client on iya-sts and writes the listener CA trust chain to the file `tlsCa` names. `trust-chain.mjs` holds `saveTrustChain()` and refreshes that file. `trust-chain.test.ts`: the chain is written whole to `tlsCa`'s path, a later refresh is verified against it, a stale chain is replaced on first use after the host-name and link checks, and the library trusts a grant server through it and still checks its host name. `live_iya_sts.py` signs the demo in to a fresh iya-sts and checks two Shared Signals events. `redirects.mjs` rewrites a loopback URL onto `PORT`. `version.mjs` stamps the published version. |
 | `docs` | The GitHub Pages site. |
 | `tools/apidocs` | TypeDoc. It is outside the npm workspace. |
 | `Dockerfile`, `docker-compose.yml` | The demo image. Compose uses host networking. |
@@ -68,7 +68,7 @@ The demo image build copies that file into the image at `/app/demo/generated/idp
 
 The mechanism is `COPY demo demo` plus `.dockerignore`'s `demo/generated/*` and `!demo/generated/idp-ca.pem`. Do not replace it with a COPY that names the file or globs for it: when the file is absent, BuildKit fails on the missing path and the classic builder fails with "no source files were specified". A directory COPY of `demo/` (which always exists) succeeds in both.
 
-The container entrypoint also refreshes the file from the provider at start, because a development iya-sts makes a new CA when it restarts. A failed refresh keeps the file from the build. `TLS_CA_REFRESH=0` turns the refresh off. `node scripts/trust-chain.mjs --config demo/gnap.json` refreshes it by hand. Compose still mounts `demo/generated` (for the client key and certificate), which hides the image's copy behind the host's file.
+The container entrypoint also refreshes the file from the provider at start, because a development iya-sts makes a new CA when it restarts. A failed refresh keeps the file from the build. The refresh verifies the provider against the chain the file already holds; only when that chain cannot verify it (no file yet, or a new CA) does it take the provider's chain on first use, still checking that it names the host and is signed link by link, and it prints the root's SHA-256 to compare with iya-sts's PKI page. `TLS_CA_REFRESH=0` turns the refresh off. `node scripts/trust-chain.mjs --config demo/gnap.json` refreshes it by hand. Compose still mounts `demo/generated` (for the client key and certificate), which hides the image's copy behind the host's file.
 
 ## Demo
 
