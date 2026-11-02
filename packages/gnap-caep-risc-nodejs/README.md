@@ -61,7 +61,7 @@ The walkthrough is [the server-side guide](docs/guide.md). Events are [Handling 
 
 `tls()` is `ca`, and for mutual TLS the certificate and the PKCS#8 key. `security` describes the posture. `instanceId` is set from the first response that carries one.
 
-A `continue` or `manage` URI on another origin throws before the request is sent. `too_fast` adopts the continuation in the error body, waits, and retries inside `maxWaitSec`. A zero wait is retried at most twice.
+A `continue` or `manage` URI on another origin, or one with user information (`user:password@`), throws before the request is sent. `too_fast` adopts the continuation in the error body, waits, and retries inside `maxWaitSec`. A zero wait is retried at most twice.
 
 ## Subject
 

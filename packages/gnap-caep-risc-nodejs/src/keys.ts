@@ -120,9 +120,25 @@ function publicFrom(privateKey: KeyObject): PublicJwk {
   };
 }
 
-/** PEM certificates in the order they appear. A chain file is leaf first. */
-function certificateBlocks(pem: string): string[] {
-  return pem.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g) ?? [];
+const PEM_BEGIN = '-----BEGIN CERTIFICATE-----';
+const PEM_END = '-----END CERTIFICATE-----';
+
+/**
+ * PEM certificates in the order they appear. A chain file is leaf first. A scan with indexOf rather
+ * than a lazy regular expression, which is quadratic on many BEGIN lines with no END.
+ */
+export function certificateBlocks(pem: string): string[] {
+  const blocks: string[] = [];
+  let from = 0;
+  for (;;) {
+    const begin = pem.indexOf(PEM_BEGIN, from);
+    if (begin < 0) break;
+    const end = pem.indexOf(PEM_END, begin + PEM_BEGIN.length);
+    if (end < 0) break;
+    blocks.push(pem.slice(begin, end + PEM_END.length));
+    from = end + PEM_END.length;
+  }
+  return blocks;
 }
 
 /**

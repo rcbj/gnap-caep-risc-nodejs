@@ -568,6 +568,8 @@ export class GnapClient {
       throw new GnapError('validation', `${what} is not a URL: ${uri}`);
     }
     if (url.protocol !== 'https:' && !this.config.allowInsecure) throw new GnapError('validation', `${what} must use https: ${uri}`);
+    // The origin ignores user information, and node would send it as Basic credentials.
+    if (url.username || url.password) throw new GnapError('validation', `${what} must not carry user information`);
     if (url.origin !== new URL(this.config.grantEndpoint).origin) {
       throw new GnapError('validation', `${what} ${uri} is not on the grant endpoint's origin`);
     }

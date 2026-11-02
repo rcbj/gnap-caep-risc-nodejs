@@ -92,7 +92,7 @@ const done = await gnap.finishRedirect(query, { allowedIds });
 
 `allowedIds` are the pending ids this browser's cookie names. A redirect URL from another browser does not match, and the pending is not consumed. The hash is compared in constant time and is single use. A repeated parameter is refused. `access_token`, `id_token`, `value`, `continue`, or `refresh_token` in the query is refused: GNAP does not deliver tokens on the front channel.
 
-The continuation is `POST` to `continue.uri` with `Authorization: GNAP` and the key proof, body `{ "interact_ref": "…" }`. iya-sts may answer `too_fast` and include a new continuation. The client waits out `continue.wait` (what is left of it, since the person already spent some of it at the provider), bounded by `maxWaitSec` (30). A zero wait is retried only twice. A `continue` or `manage` URI on another origin is refused before anything is fetched.
+The continuation is `POST` to `continue.uri` with `Authorization: GNAP` and the key proof, body `{ "interact_ref": "…" }`. iya-sts may answer `too_fast` and include a new continuation. The client waits out `continue.wait` (what is left of it, since the person already spent some of it at the provider), bounded by `maxWaitSec` (30). A zero wait is retried only twice. A `continue` or `manage` URI on another origin, or one with user information (`user:password@`), is refused before anything is fetched.
 
 The subject `id_token` is checked with `node:crypto`: issuer, `exp` / `nbf` / `iat` within `clockToleranceSec`, signature, and audience. iya-sts puts the **instance id** in the audience. This client also accepts the application identifier. HMAC and `none` are refused. If `iss_sub.sub` and the token's `sub` differ, the grant is refused.
 
