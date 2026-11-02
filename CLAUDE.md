@@ -81,7 +81,7 @@ ADMIN_API_CLIENT_SECRET=… npm run configure-iya-sts
 docker compose up --build
 ```
 
-Open <http://localhost:3000>. The setup script's test user is `gnap-demo-user`.
+Open <http://localhost:3000>. The setup script's test user is `gnap-demo-user`. Unless `GNAP_DEMO_USER_PASSWORD` sets its password, iya-sts generates one, and the install script writes it to `demo/generated/gnap-demo-user.password` (created mode 0600) and prints only that path, never the password.
 
 A loopback finish URI follows `PORT` in the running server and in `scripts/configure-iya-sts.ts`. Any other host is left as written. An explicit `--public-url` or a non-empty `PUBLIC_URL` replaces the origin and keeps the path. The running container's `PORT` wins over the shell's when the script registers the application. `ssf.pollIntervalMs` of 3000 in `demo/gnap.json` is a millisecond pause, not a port. `GET /live-status` reports the sign-in in this browser, the receiver state, and the type and `jti` of each accepted event. It does not include tokens.
 
