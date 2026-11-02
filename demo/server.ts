@@ -18,6 +18,8 @@
 //   POST /u/<a>/logout    signs that account out of this application; the others stay
 //   POST /logout          signs every account in this browser out of this application
 //   GET  /healthz         for the container's health check
+//   GET  /live-status     JSON for scripts/live_iya_sts.py: signedIn and subject for this browser, the
+//                         receiver state, and the type and jti of every event received. No tokens.
 //
 // SHARED SIGNALS starts after the first successful grant, not when the process starts, so the home page
 // does not contact the authorization server. One poll stream, authenticated by a GNAP access token and
@@ -162,6 +164,9 @@ function logFor(sid: string, entry: LoggedEvent): void {
   tell(sid, 'signal', entry, entry.id);
 }
 
+// Every event the receiver accepted, type and jti only, for GET /live-status. Capped like the logs.
+const liveEvents: Array<{ type: string; jti: string }> = [];
+
 let receiver: SignalsReceiver | undefined;
 let ssfGrant: Grant | undefined;
 let receiverState = loaded.signalsOff
@@ -206,6 +211,8 @@ function startReceiver(): void {
     },
   });
   r.on('*', (event: SignalEvent) => {
+    liveEvents.push({ type: event.type, jti: event.jti });
+    if (liveEvents.length > 100) liveEvents.shift();
     const entry: LoggedEvent = {
       id: ++sequence,
       at: new Date().toISOString(),
@@ -528,6 +535,15 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
   if (url.pathname === '/healthz') return send(res, 200, 'ok', { 'content-type': 'text/plain' });
   if (url.pathname === '/styles.css') return send(res, 200, STYLES, { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'max-age=300' });
+  if (url.pathname === '/live-status' && method === 'GET') {
+    const first = accountsOf(req)[0];
+    return send(res, 200, JSON.stringify({
+      signedIn: Boolean(first),
+      subject: first ? who(first.session.person) : null,
+      receiver: receiverState,
+      events: liveEvents,
+    }), { 'content-type': 'application/json' });
+  }
   if (url.pathname === '/app.js') return send(res, 200, APP_JS, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'max-age=300' });
 
   const scoped = /^\/u\/([A-Za-z0-9_-]{6,32})(\/.*)?$/.exec(url.pathname);

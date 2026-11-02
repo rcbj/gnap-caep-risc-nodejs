@@ -16,6 +16,21 @@ COPY packages/gnap-caep-risc-nodejs/tsconfig.json packages/gnap-caep-risc-nodejs
 COPY packages/gnap-caep-risc-nodejs/src packages/gnap-caep-risc-nodejs/src
 RUN npm run build -w packages/gnap-caep-risc-nodejs
 
+# The setup script and the key generator, run from their TypeScript sources. scripts/live_iya_sts.py
+# runs configure-iya-sts.ts and generate-key in this image, not on the host. `--target tools`.
+FROM build AS tools
+COPY VERSION ./
+COPY scripts scripts
+COPY demo/gnap.json demo/server.ts demo/uid-claim.ts demo/
+
+# The unit suite: `docker build --target test .`. node:test against the stub authorization server and
+# the stub transmitter, the setup script's plan, and the check that the manifests follow VERSION.
+FROM tools AS test
+# One test makes a throwaway certificate with the openssl command, which Alpine does not ship.
+RUN apk add --no-cache openssl
+COPY packages/gnap-caep-risc-nodejs/test packages/gnap-caep-risc-nodejs/test
+RUN npm test && node scripts/version.mjs --check-manifests
+
 FROM node:24.22.1-alpine
 ENV NODE_ENV=production
 WORKDIR /app
