@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { GnapError } from './errors.ts';
 import { loadClientKey, type ClientKey, type KeyProof } from './keys.ts';
+import { trimTrailingSlashes } from './text.ts';
 
 const PROOFS: readonly KeyProof[] = ['mtls', 'httpsig', 'jwsd'];
 
@@ -185,7 +186,7 @@ export function resolveConfig(raw: unknown, baseDir: string): ResolvedConfig {
   const allowInsecure = doc.allowInsecure === true;
   const grantEndpoint = checkUrl(grantRaw, 'grantEndpoint', allowInsecure);
   const origin = new URL(grantEndpoint).origin;
-  const idTokenIssuer = (doc.idTokenIssuer?.trim() || origin).replace(/\/+$/, '');
+  const idTokenIssuer = trimTrailingSlashes(doc.idTokenIssuer?.trim() || origin);
   if (!/^https?:\/\//.test(idTokenIssuer)) throw new GnapError('config', 'idTokenIssuer must be an http(s) URL');
 
   const proofRaw = doc.keyProof?.trim();
@@ -234,7 +235,8 @@ export function resolveConfig(raw: unknown, baseDir: string): ResolvedConfig {
 
   let ssf: ResolvedConfig['ssf'];
   if (!signalsOff) {
-    const transmitter = (doc.ssf?.transmitter ?? doc.transmitterIssuer)?.replace(/\/+$/, '');
+    const transmitterRaw = doc.ssf?.transmitter ?? doc.transmitterIssuer;
+    const transmitter = transmitterRaw === undefined ? undefined : trimTrailingSlashes(transmitterRaw);
     if (transmitter) {
       if (!/^https?:\/\//.test(transmitter)) throw new GnapError('config', 'ssf.transmitter must be an http(s) URL');
       ssf = { transmitter, ...(doc.ssf?.pollIntervalMs ? { pollIntervalMs: doc.ssf.pollIntervalMs } : {}) };

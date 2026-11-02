@@ -37,7 +37,7 @@ ADMIN_API_CLIENT_SECRET=… npm run configure-iya-sts
 docker compose up --build
 ```
 
-Open <http://localhost:3000>. The setup script's test user is `gnap-demo-user`.
+Open <http://localhost:3000>. The setup script's test user is `gnap-demo-user`. Unless `GNAP_DEMO_USER_PASSWORD` sets its password, iya-sts generates one, and the install script writes it to `demo/generated/gnap-demo-user.password` (created mode 0600) and prints only that path, never the password.
 
 `GET /live-status` is JSON for the sign-in in this browser and the Shared Signals events the demo has accepted: `signedIn`, `subject`, `receiver`, and events of `type` and `jti`. It does not include tokens.
 

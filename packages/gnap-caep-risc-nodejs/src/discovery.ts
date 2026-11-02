@@ -5,6 +5,7 @@
 
 import { GnapError } from './errors.ts';
 import { send, type TlsOptions } from './http.ts';
+import { trimTrailingSlashes } from './text.ts';
 
 /** What this client reads from a grant server's OPTIONS document. Other members are ignored. */
 export interface GrantServerMetadata {
@@ -19,7 +20,7 @@ export interface GrantServerMetadata {
 /** `inserted` first, then `appended`, and only one of them when they are the same URL. */
 export function wellKnownUrls(issuer: string, suffix: string): string[] {
   const url = new URL(issuer);
-  const path = url.pathname.replace(/\/+$/, '');
+  const path = trimTrailingSlashes(url.pathname);
   const inserted = `${url.origin}/.well-known/${suffix}${path}`;
   const appended = `${url.origin}${path}/.well-known/${suffix}`;
   return inserted === appended ? [inserted] : [inserted, appended];
@@ -40,8 +41,8 @@ export function validateGrantServer(raw: unknown, grantEndpoint: string): GrantS
   if (typeof doc.grant_request_endpoint !== 'string' || !doc.grant_request_endpoint) {
     throw new GnapError('discovery', 'grant-server metadata has no grant_request_endpoint');
   }
-  const advertised = new URL(doc.grant_request_endpoint).href.replace(/\/+$/, '');
-  const asked = new URL(grantEndpoint).href.replace(/\/+$/, '');
+  const advertised = trimTrailingSlashes(new URL(doc.grant_request_endpoint).href);
+  const asked = trimTrailingSlashes(new URL(grantEndpoint).href);
   if (advertised !== asked) {
     throw new GnapError('discovery', `the grant server says its endpoint is ${doc.grant_request_endpoint}, not ${grantEndpoint}`);
   }
@@ -90,7 +91,7 @@ export async function discoverOpenId(issuer: string, tls: TlsOptions): Promise<O
       last = new GnapError('discovery', `${url} answered ${answer.status} without OpenID Provider metadata`);
       continue;
     }
-    if (doc.issuer && doc.issuer.replace(/\/+$/, '') !== issuer.replace(/\/+$/, '')) {
+    if (doc.issuer && trimTrailingSlashes(doc.issuer) !== trimTrailingSlashes(issuer)) {
       throw new GnapError('discovery', `${url} says its issuer is ${doc.issuer}, not ${issuer}`);
     }
     return { issuer: doc.issuer ?? issuer, jwks_uri: doc.jwks_uri };

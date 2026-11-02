@@ -17,6 +17,7 @@
 import { wellKnownUrls } from '../discovery.ts';
 import { GnapError } from '../errors.ts';
 import { send, type TlsOptions } from '../http.ts';
+import { trimTrailingSlashes } from '../text.ts';
 import { DEFAULT_ENDING_EVENTS, DEFAULT_EVENTS_REQUESTED, EVENT, subjectOf, type SubjectRef } from './events.ts';
 import { verifyCompactJws, type Jwk } from './jws.ts';
 import { MemorySessionIndex, type SessionIndex, type TrackedSession } from './session-index.ts';
@@ -124,7 +125,7 @@ export class SignalsReceiver {
       maxEvents: 50,
       log: console,
       ...options,
-      transmitter: options.transmitter.replace(/\/+$/, ''),
+      transmitter: trimTrailingSlashes(options.transmitter),
     };
     this.#index = options.sessionIndex ?? new MemorySessionIndex();
   }
