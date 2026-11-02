@@ -21,7 +21,7 @@ docker compose up --build
 
 Open <http://localhost:3000> and sign in as `gnap-demo-user`. `PORT` defaults to 3000. A loopback finish URI follows `PORT`, and `configure-iya-sts` registers that URI.
 
-`generate-key` writes `demo/generated/client.key` and `demo/generated/client.crt`. `configure-iya-sts` registers the public certificate as the GNAP key, proof `mtls`, and writes `demo/generated/idp-ca.pem`. That second file is the listener CA trust chain, and it is what `tlsCa` in `demo/gnap.json` names. Compose mounts the directory into the container. The files are not in the image. When the container starts, it fetches the chain again and updates that file, so a rebuilt listener certificate is picked up without a second setup run.
+`generate-key` writes `demo/generated/client.key` and `demo/generated/client.crt`. `configure-iya-sts` registers the public certificate as the GNAP key, proof `mtls`, and writes `demo/generated/idp-ca.pem`. That second file is the listener CA trust chain, and it is what `tlsCa` in `demo/gnap.json` names. The image build copies the chain file in, so the demo image trusts that iya-sts with no mount; run the setup script before `docker compose up --build`, and rebuild after running it against a different iya-sts. The key and certificate are never in the image: Compose mounts the directory into the container for them. When the container starts, it fetches the chain again and updates that file (unless `TLS_CA_REFRESH=0`), so a rebuilt listener certificate is picked up without a second setup run.
 
 The container uses the host's network, so `https://localhost:8081` is the same address inside the container as in the browser. On Docker Desktop, turn on host networking.
 
