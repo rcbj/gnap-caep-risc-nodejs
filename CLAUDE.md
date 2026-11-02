@@ -14,7 +14,7 @@ Node.js 22.18 or later. The package engines field says `>=22.18.0`. Continuous i
 |---|---|
 | `packages/gnap-caep-risc-nodejs` | The library published to npm as `gnap-caep-risc-nodejs`. Source is `src/` (`client.ts`, `config.ts`, `keys.ts`, `httpsig.ts`, `jwsd.ts`, `x509.ts`, `ssf/`). Tests are `test/`. `npm run build` writes `dist/`. |
 | `demo` | The server-rendered demo. `demo/server.ts` and `demo/public/`. Config is `demo/gnap.json`. |
-| `scripts` | `configure-iya-sts.ts` registers the client on iya-sts. `live_iya_sts.py` signs the demo in to a fresh iya-sts and checks two Shared Signals events. `redirects.mjs` rewrites a loopback URL onto `PORT`. `version.mjs` stamps the published version. |
+| `scripts` | `configure-iya-sts.ts`, the install script, registers the client on iya-sts and writes the listener CA trust chain to the file `tlsCa` names. `trust-chain.mjs` holds `saveTrustChain()` and refreshes that file. `trust-chain.test.ts`: the chain is written whole to `tlsCa`'s path, and the library trusts a grant server through it. `live_iya_sts.py` signs the demo in to a fresh iya-sts and checks two Shared Signals events. `redirects.mjs` rewrites a loopback URL onto `PORT`. `version.mjs` stamps the published version. |
 | `docs` | The GitHub Pages site. |
 | `tools/apidocs` | TypeDoc. It is outside the npm workspace. |
 | `Dockerfile`, `docker-compose.yml` | The demo image. Compose uses host networking. |
@@ -54,9 +54,21 @@ npm run version:check
 
 `npm test` runs `node:test` on the TypeScript sources in `packages/gnap-caep-risc-nodejs/test` and on `scripts/*.test.ts`. The library tests use a stub authorization server and a stub transmitter. `version:check` fails unless every manifest is `M.N.0`.
 
-The stub tests do not start iya-sts. `python3 scripts/live_iya_sts.py` does, unless `IYA_STS_URL` names one that is already running; `IYA_STS_IMAGE` starts a fresh container from that image instead of cloning and building `main`. It generates the key and runs `scripts/configure-iya-sts.ts` in the `tools` stage image, runs the demo image on `LIVE_DEMO_PORT` (default 18600) with host networking, signs in through `/authn-api`, emits credential-change and then session-revoked, and checks both on `GET /live-status`. iya-sts is published on `127.0.0.1:LIVE_STS_PORT` (default 18500). Use a fresh iya-sts for every run: a second registration of the same application keeps the old key. It never binds port 3000 or 8081. `.github/workflows/nightly.yml` runs the unit suite and this script at 06:00 UTC (`0 6 * * *`) and on demand.
+The stub tests do not start iya-sts. `python3 scripts/live_iya_sts.py` does, unless `IYA_STS_URL` names one that is already running; `IYA_STS_IMAGE` starts a fresh container from that image instead of cloning and building `main`. It copies the checkout to a scratch build context, builds the `tools` stage image there, and generates the key and runs `scripts/configure-iya-sts.ts` in it, which write the client key, its certificate and the `tlsCa` chain into the context's `demo/generated`. Then it builds the demo image, checks it carries that chain (and nothing else from `demo/generated`), and runs it on `LIVE_DEMO_PORT` (default 18647) with host networking, only the client key and certificate mounted (one file each) and `TLS_CA_REFRESH=0`. It never rewrites `tlsCa` or fetches the CA for the demo. It signs in through `/authn-api`, emits credential-change and then session-revoked, and checks both on `GET /live-status`. iya-sts is published on `127.0.0.1:LIVE_STS_PORT` (default 18547). Use a fresh iya-sts for every run: a second registration of the same application keeps the old key. It never binds port 3000, 8081, or 18481 to 18495. `.github/workflows/nightly.yml` runs the unit suite and this script at 06:00 UTC (`0 6 * * *`) and on demand.
 
 `.github/workflows/tests.yml` also builds the demo image and checks what it serves. That job publishes host port 3000. Do not run it while a demo is already bound there. The in-process commands above do not need the container.
+
+## The iya-sts trust chain (`tlsCa`)
+
+`tlsCa` in `demo/gnap.json` names the iya-sts TLS listener CA trust chain the library trusts. The default is `generated/idp-ca.pem`, relative to `demo/`. The value may also be `file:<path>`, `env:<NAME>`, or the PEM itself. The library trusts every certificate in it, in addition to Node's own store.
+
+`scripts/configure-iya-sts.ts`, the install script, writes that file. It saves the whole chain iya-sts publishes at `GET /tls/server-certificate` (leaf, TLS Issuing CA, Intermediate, Root), or the chain from the TLS handshake when that path does not answer. It prints the path, the trust anchor's subject and its SHA-256 fingerprint. Compare the anchor with the Root CA on iya-sts's PKI page.
+
+The demo image build copies that file into the image at `/app/demo/generated/idp-ca.pem`, so the image trusts that iya-sts with no bind mount and no fetch. Run the install script before you build the image. Rebuild the image after running the install script against a different iya-sts. `.dockerignore` admits only that file from `demo/generated`; the client key, its certificate and the test user's password stay out of the image. A build with no chain file yet (a fresh clone, CI's `--target test`) still succeeds; the image then has no `tlsCa` file.
+
+The mechanism is `COPY demo demo` plus `.dockerignore`'s `demo/generated/*` and `!demo/generated/idp-ca.pem`. Do not replace it with a COPY that names the file or globs for it: when the file is absent, BuildKit fails on the missing path and the classic builder fails with "no source files were specified". A directory COPY of `demo/` (which always exists) succeeds in both.
+
+The container entrypoint also refreshes the file from the provider at start, because a development iya-sts makes a new CA when it restarts. A failed refresh keeps the file from the build. `TLS_CA_REFRESH=0` turns the refresh off. `node scripts/trust-chain.mjs --config demo/gnap.json` refreshes it by hand. Compose still mounts `demo/generated` (for the client key and certificate), which hides the image's copy behind the host's file.
 
 ## Demo
 

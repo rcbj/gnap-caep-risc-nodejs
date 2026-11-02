@@ -41,6 +41,18 @@ Open <http://localhost:3000>. The setup script's test user is `gnap-demo-user`.
 
 `GET /live-status` is JSON for the sign-in in this browser and the Shared Signals events the demo has accepted: `signedIn`, `subject`, `receiver`, and events of `type` and `jti`. It does not include tokens.
 
+## The iya-sts trust chain (`tlsCa`)
+
+`tlsCa` in `demo/gnap.json` names the iya-sts TLS listener CA trust chain the library trusts. The default is `generated/idp-ca.pem`, relative to `demo/`. The value may also be `file:<path>`, `env:<NAME>`, or the PEM itself. The library trusts every certificate in it, in addition to Node's own store.
+
+`scripts/configure-iya-sts.ts`, the install script, writes that file. It saves the whole chain iya-sts publishes at `GET /tls/server-certificate` (leaf, TLS Issuing CA, Intermediate, Root), or the chain from the TLS handshake when that path does not answer. It prints the path, the trust anchor's subject and its SHA-256 fingerprint. Compare the anchor with the Root CA on iya-sts's PKI page.
+
+The demo image build copies that file into the image at `/app/demo/generated/idp-ca.pem`, so the image trusts that iya-sts with no bind mount and no fetch. Run the install script before you build the image. Rebuild the image after running the install script against a different iya-sts. `.dockerignore` admits only that file from `demo/generated`; the client key, its certificate and the test user's password stay out of the image. A build with no chain file yet (a fresh clone, CI's `--target test`) still succeeds; the image then has no `tlsCa` file.
+
+The mechanism is `COPY demo demo` plus `.dockerignore`'s `demo/generated/*` and `!demo/generated/idp-ca.pem`. Do not replace it with a COPY that names the file or globs for it: when the file is absent, BuildKit fails on the missing path and the classic builder fails with "no source files were specified". A directory COPY of `demo/` (which always exists) succeeds in both.
+
+The container entrypoint also refreshes the file from the provider at start, because a development iya-sts makes a new CA when it restarts. A failed refresh keeps the file from the build. `TLS_CA_REFRESH=0` turns the refresh off. `node scripts/trust-chain.mjs --config demo/gnap.json` refreshes it by hand. Compose still mounts `demo/generated` (for the client key and certificate), which hides the image's copy behind the host's file.
+
 ## Tests
 
 ```sh
@@ -49,4 +61,4 @@ docker build --target test .
 
 That target runs the unit suite in the Node image. It uses a stub authorization server and a stub transmitter.
 
-`python3 scripts/live_iya_sts.py` is the live half. It starts a fresh iya-sts from its `main` branch in memory mode when `IYA_STS_URL` is unset (`IYA_STS_IMAGE` names an iya-sts image to start instead of building one). It generates the demo's key and registers the demo with `scripts/configure-iya-sts.ts` in this repository's `tools` image, starts the demo image, signs in, and requires a credential-change event and a session-revoked event on `GET /live-status`. The second event ends the local session. `LIVE_STS_PORT` (default 18500) and `LIVE_DEMO_PORT` (default 18600) choose the ports. It never binds port 3000 or 8081, and it runs no Node on the host. The nightly workflow runs the unit suite and this script at 06:00 UTC.
+`python3 scripts/live_iya_sts.py` is the live half. It starts a fresh iya-sts from its `main` branch in memory mode when `IYA_STS_URL` is unset (`IYA_STS_IMAGE` names an iya-sts image to start instead of building one). It copies this checkout to a scratch build context, generates the demo's key and runs the install script `scripts/configure-iya-sts.ts` in this repository's `tools` image, which writes the `tlsCa` chain. Then it builds the demo image, checks the image carries the chain and nothing else from `demo/generated`, starts it with only the client key and certificate mounted and `TLS_CA_REFRESH=0`, signs in, and requires a credential-change event and a session-revoked event on `GET /live-status`. The second event ends the local session. `LIVE_STS_PORT` (default 18547) and `LIVE_DEMO_PORT` (default 18647) choose the ports. It never binds port 3000, 8081, or 18481 to 18495, and it runs no Node on the host. The nightly workflow runs the unit suite and this script at 06:00 UTC.
