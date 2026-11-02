@@ -445,6 +445,12 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
   for (const call of plan.filter((one) => one.when === 'always' && (one.path.endsWith('/config/set') || one.path.endsWith('/roles/add-member') || one.path.endsWith('/applications/set-custom-claim')))) {
     const answered = await api(call.path.slice(`${base}/admin-api`.length), call.body);
     const errors = errorsOf(answered.body).join(' ');
+    // An iya-sts older than the gnap_access_token claim set refuses it as "not one of" the sets it
+    // knows. The uid claim only names the person on the demo's page, so sign-in works without it.
+    if (call.path.endsWith('/applications/set-custom-claim') && !answered.body.ok && /not one of/.test(errors)) {
+      console.log(`  ${call.why}: this iya-sts has no ${(call.body as { set?: string }).set} claim set; continuing.`);
+      continue;
+    }
     if (!answered.body.ok && !/already/i.test(errors)) throw new Error(`${call.why}: refused: ${JSON.stringify(answered.body).slice(0, 400)}`);
     if (!answered.body.ok) console.log(`  ${call.why}: already so`);
     else if (call.path.endsWith('/applications/set-custom-claim')) console.log(`Access-token JWT claim uid is set on ${files.application}.`);

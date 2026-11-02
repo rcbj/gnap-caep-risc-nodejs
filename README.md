@@ -38,3 +38,15 @@ docker compose up --build
 ```
 
 Open <http://localhost:3000>. The setup script's test user is `gnap-demo-user`.
+
+`GET /live-status` is JSON for the sign-in in this browser and the Shared Signals events the demo has accepted: `signedIn`, `subject`, `receiver`, and events of `type` and `jti`. It does not include tokens.
+
+## Tests
+
+```sh
+docker build --target test .
+```
+
+That target runs the unit suite in the Node image. It uses a stub authorization server and a stub transmitter.
+
+`python3 scripts/live_iya_sts.py` is the live half. It starts a fresh iya-sts from its `main` branch in memory mode when `IYA_STS_URL` is unset (`IYA_STS_IMAGE` names an iya-sts image to start instead of building one). It generates the demo's key and registers the demo with `scripts/configure-iya-sts.ts` in this repository's `tools` image, starts the demo image, signs in, and requires a credential-change event and a session-revoked event on `GET /live-status`. The second event ends the local session. `LIVE_STS_PORT` (default 18500) and `LIVE_DEMO_PORT` (default 18600) choose the ports. It never binds port 3000 or 8081, and it runs no Node on the host. The nightly workflow runs the unit suite and this script at 06:00 UTC.
