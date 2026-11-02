@@ -14,7 +14,7 @@ Node.js 22.18 or later. The package engines field says `>=22.18.0`. Continuous i
 |---|---|
 | `packages/gnap-caep-risc-nodejs` | The library published to npm as `gnap-caep-risc-nodejs`. Source is `src/` (`client.ts`, `config.ts`, `keys.ts`, `httpsig.ts`, `jwsd.ts`, `x509.ts`, `ssf/`). Tests are `test/`. `npm run build` writes `dist/`. |
 | `demo` | The server-rendered demo. `demo/server.ts` and `demo/public/`. Config is `demo/gnap.json`. |
-| `scripts` | `configure-iya-sts.ts`, the install script, registers the client on iya-sts and writes the listener CA trust chain to the file `tlsCa` names. `trust-chain.mjs` holds `saveTrustChain()` and refreshes that file. `trust-chain.test.ts`: the chain is written whole to `tlsCa`'s path, and the library trusts a grant server through it. `live_iya_sts.py` signs the demo in to a fresh iya-sts and checks two Shared Signals events. `redirects.mjs` rewrites a loopback URL onto `PORT`. `version.mjs` stamps the published version. |
+| `scripts` | `configure-iya-sts.ts`, the install script, registers the client on iya-sts and writes the listener CA trust chain to the file `tlsCa` names. `trust-chain.mjs` holds `saveTrustChain()` and refreshes that file. `trust-chain.test.ts`: the chain is written whole to `tlsCa`'s path, and the library trusts a grant server through it and still checks its host name. `live_iya_sts.py` signs the demo in to a fresh iya-sts and checks two Shared Signals events. `redirects.mjs` rewrites a loopback URL onto `PORT`. `version.mjs` stamps the published version. |
 | `docs` | The GitHub Pages site. |
 | `tools/apidocs` | TypeDoc. It is outside the npm workspace. |
 | `Dockerfile`, `docker-compose.yml` | The demo image. Compose uses host networking. |

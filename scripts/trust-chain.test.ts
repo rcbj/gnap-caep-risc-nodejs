@@ -30,6 +30,11 @@ function makeChain(work: string) {
     'keyUsage = critical, digitalSignature, keyEncipherment',
     'extendedKeyUsage = serverAuth',
     'subjectAltName = IP:127.0.0.1, DNS:localhost',
+    '[elsewhere]',
+    'basicConstraints = critical, CA:FALSE',
+    'keyUsage = critical, digitalSignature, keyEncipherment',
+    'extendedKeyUsage = serverAuth',
+    'subjectAltName = DNS:elsewhere.example',
     '',
   ].join('\n'));
   openssl('req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=sts Root CA',
@@ -44,9 +49,13 @@ function makeChain(work: string) {
   issue('intermediate', '/CN=sts Intermediate CA', 'root', 'ca');
   issue('issuing', '/CN=sts TLS Issuing CA', 'intermediate', 'ca');
   issue('leaf', '/CN=localhost', 'issuing', 'leaf');
+  // The same chain, a leaf for another name: the trust file must not be enough on its own.
+  issue('elsewhere', '/CN=elsewhere.example', 'issuing', 'elsewhere');
   const pem = (name: string) => readFileSync(join(work, `${name}.pem`), 'utf8').trim();
   return {
     key: readFileSync(join(work, 'leaf.key')),
+    elsewhereKey: readFileSync(join(work, 'elsewhere.key')),
+    elsewhere: `${pem('elsewhere')}\n${pem('issuing')}\n${pem('intermediate')}\n`,
     presented: `${pem('leaf')}\n${pem('issuing')}\n${pem('intermediate')}\n`,
     published: `${pem('leaf')}\n${pem('issuing')}\n${pem('intermediate')}\n${pem('root')}\n`,
     root: new X509Certificate(pem('root')),
@@ -57,34 +66,42 @@ describe('the iya-sts trust chain in tlsCa', () => {
   const work = mkdtempSync(join(tmpdir(), 'gnap-tlsca-'));
   const chain = makeChain(work);
   let server: https.Server;
+  let elsewhere: https.Server;
   let origin = '';
+  let elsewherePort = 0;
+
+  const handler: https.RequestListener = (req, res) => {
+    if (req.url === '/tls/server-certificate') {
+      res.setHeader('content-type', 'text/plain');
+      res.end(chain.published);
+      return;
+    }
+    if (req.url === '/gnap' && req.method === 'OPTIONS') {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({
+        grant_request_endpoint: `https://${req.headers.host}/gnap`,
+        interaction_start_modes_supported: ['redirect'],
+        interaction_finish_methods_supported: ['redirect'],
+        key_proofs_supported: ['mtls', 'httpsig'],
+      }));
+      return;
+    }
+    res.statusCode = 404;
+    res.end();
+  };
 
   before(async () => {
-    server = https.createServer({ key: chain.key, cert: chain.presented }, (req, res) => {
-      if (req.url === '/tls/server-certificate') {
-        res.setHeader('content-type', 'text/plain');
-        res.end(chain.published);
-        return;
-      }
-      if (req.url === '/gnap' && req.method === 'OPTIONS') {
-        res.setHeader('content-type', 'application/json');
-        res.end(JSON.stringify({
-          grant_request_endpoint: `${origin}/gnap`,
-          interaction_start_modes_supported: ['redirect'],
-          interaction_finish_methods_supported: ['redirect'],
-          key_proofs_supported: ['mtls', 'httpsig'],
-        }));
-        return;
-      }
-      res.statusCode = 404;
-      res.end();
-    });
+    server = https.createServer({ key: chain.key, cert: chain.presented }, handler);
     await new Promise<void>((done) => server.listen(0, '127.0.0.1', () => done()));
     origin = `https://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    elsewhere = https.createServer({ key: chain.elsewhereKey, cert: chain.elsewhere }, handler);
+    await new Promise<void>((done) => elsewhere.listen(0, '127.0.0.1', () => done()));
+    elsewherePort = (elsewhere.address() as AddressInfo).port;
   });
 
   after(async () => {
     await new Promise<void>((done) => server.close(() => done()));
+    await new Promise<void>((done) => elsewhere.close(() => done()));
   });
 
   // demo/gnap.json as shipped, in a scratch demo directory, so tlsCa resolves as it does in the image.
@@ -129,5 +146,17 @@ describe('the iya-sts trust chain in tlsCa', () => {
     assert.equal(metadata.grant_request_endpoint, `${origin}/gnap`);
     const { ca: _ca, ...withoutCa } = tls;
     await assert.rejects(discoverGrantServer(resolved.grantEndpoint, withoutCa));
+  });
+
+  it('the library checks the host name as well as the chain', async () => {
+    const tls = GnapClient.create(readConfigFile(config)).tls();
+    // The right leaf, by its IP address SAN and by its DNS SAN.
+    const port = new URL(origin).port;
+    assert.equal((await discoverGrantServer(`https://127.0.0.1:${port}/gnap`, tls)).grant_request_endpoint,
+      `https://127.0.0.1:${port}/gnap`);
+    assert.equal((await discoverGrantServer(`https://localhost:${port}/gnap`, tls)).grant_request_endpoint,
+      `https://localhost:${port}/gnap`);
+    // The same trusted chain, a leaf for another name: refused.
+    await assert.rejects(discoverGrantServer(`https://127.0.0.1:${elsewherePort}/gnap`, tls), /altnames/);
   });
 });
