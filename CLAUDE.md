@@ -87,7 +87,7 @@ A loopback finish URI follows `PORT` in the running server and in `scripts/confi
 
 ## Releases
 
-`main` publishes `M.N.P` as npm `latest`. `develop` publishes `M.N.P-next.R` as `next`. The patch is chosen at publish time by `scripts/version.mjs` from the versions already on npm. After bumping `VERSION`, run `npm run version:sync`.
+`main` publishes `M.N.P` as npm `latest`. `develop` publishes nothing, so every release tag is on `main`. `M.N.P-next.R` under `next` comes only from running the workflow by hand on `main`. The patch is chosen at publish time by `scripts/version.mjs` from the versions already on npm. After bumping `VERSION`, run `npm run version:sync`.
 
 `.github/workflows/npm-publish.yml` runs only when the push changes the package directory, `VERSION`, `package-lock.json`, `scripts/version.mjs`, or that workflow. A change that is only this file, the demo, or the docs does not publish. A pull request packs and publishes nothing.
 
