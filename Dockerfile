@@ -7,7 +7,7 @@
 # certificate are NOT: they are mounted at /app/demo/generated (docker-compose.yml). At start, the
 # entrypoint refreshes the chain into the file tlsCa names, unless TLS_CA_REFRESH=0.
 # 24.22.1: the 21 October 2026 security release, which fixes HTTP2Shell / Node2Shell (CVE-2026-111497).
-FROM node:24.22.1-alpine AS build
+FROM node:26.12.1-alpine AS build
 WORKDIR /src
 COPY package.json package-lock.json ./
 COPY packages/gnap-caep-risc-nodejs/package.json packages/gnap-caep-risc-nodejs/
@@ -32,7 +32,7 @@ RUN apk add --no-cache openssl
 COPY packages/gnap-caep-risc-nodejs/test packages/gnap-caep-risc-nodejs/test
 RUN npm test && node scripts/version.mjs --check-manifests
 
-FROM node:24.22.1-alpine
+FROM node:26.12.1-alpine
 ENV NODE_ENV=production
 WORKDIR /app
 COPY package.json package-lock.json ./
